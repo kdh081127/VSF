@@ -1,10 +1,13 @@
-export default async (req) => {
-  if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 });
+exports.handler = async (event) => {
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      body: 'Method Not Allowed'
+    };
   }
 
   try {
-    const body = await req.json();
+    const body = JSON.parse(event.body);
     const { title, original, streamer } = body;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -16,47 +19,56 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: `다음 버츄얼 스트리머 커버곡의 가사를 알려주세요.
+        max_tokens: 500,
+        messages: [
+          {
+            role: 'user',
+            content:
+`다음 곡의 가사를 알려주세요.
+
 곡명: ${title}
 원곡: ${original || '미상'}
 스트리머: ${streamer}
 
-가사를 모르면 "가사 정보를 찾을 수 없습니다."라고 답하세요. 가사만 출력하고 구절 사이는 빈 줄로 구분해주세요.`
-        }],
+가사만 출력해주세요.`
+          }
+        ],
       }),
     });
 
     const data = await response.json();
 
-console.log("Claude Response:", JSON.stringify(data));
+    console.log("Anthropic:", JSON.stringify(data));
 
-if (data.error) {
-  return {
-    statusCode: 500,
-    body: JSON.stringify({
-      error: data.error.message || 'Anthropic API Error'
-    }),
-    headers: {
-      'Content-Type': 'application/json'
+    if (!response.ok) {
+      return {
+        statusCode: response.status,
+        body: JSON.stringify({
+          error: data.error?.message || 'Anthropic API Error'
+        }),
+      };
     }
-  };
-}
 
-const text =
-  data.content?.map(v => v.text || '').join('') ||
-  '가사를 불러올 수 없습니다.';
+    const text =
+      data.content?.map(v => v.text).join('') ||
+      '가사를 불러올 수 없습니다.';
 
-    return new Response(JSON.stringify({ text }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ text }),
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    };
+
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    console.error(e);
+
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        error: e.message
+      }),
+    };
   }
 };
