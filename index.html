@@ -780,12 +780,12 @@ window.loadLyrics=async function(){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({title:c.title,original:c.original||'',streamer:c.streamer}),
     });
-    const data=await res.json();
-    ST.lyricsText=data.text||'가사를 불러올 수 없습니다.';
-  }catch{
-    ST.lyricsText='가사를 불러오는 중 오류가 발생했습니다.';
-  }
-  ST.lyricsLoading=false;render();
+    const data = await res.json();
+
+if (!res.ok) {
+  ST.lyricsText = '오류: ' + (data.error || '알 수 없는 오류');
+} else {
+  ST.lyricsText = data.text || '가사를 불러올 수 없습니다.';
 }
 
 function showToast(msg,type='ok'){
