@@ -50,6 +50,7 @@ const SKEY='vsf_covers_v4';
 const LKEY='vsf_likes_v4';
 const VKEY='vsf_views_v4';
 const MY_LIKES_KEY='vsf_my_likes_local';
+const CHKEY='vsf_channels_v1'; // 채널 정보 (YouTube URL, 프로필 이미지 등)
 
 // ═══════════════════════════════════════════════════════════════
 // 유틸
@@ -141,6 +142,10 @@ const ST={
   detailId:null,
   // 채널
   channelStreamer:null,
+  channelInfo:{},    // { 스트리머명: { ytUrl, avatarUrl, description, subscribers } }
+  // 채널 편집 모달
+  editChannelFor:null, editYtUrl:'', editDesc:'', editAvatarUrl:'',
+  editChLoading:false, editChError:'',
   // 가사
   lyricsId:null,lyricsText:'',lyricsLoading:false,
   // 추가 폼
@@ -174,11 +179,11 @@ function render(){
   else if(ST.page==='lyrics'){html+=renderLyrics();}
   html+=`</div>`;
   if(ST.detailId)html+=renderDetail();
+  if(ST.editChannelFor)html+=renderChannelEditModal();
   if(ST.toast)html+=renderToast();
   root.innerHTML=html;
   bindEvents();
 }
-
 function bindEvents(){
   // 검색
   const si=$('searchInp');
@@ -190,6 +195,10 @@ function bindEvents(){
   const ori=$('origInp');if(ori)ori.addEventListener('input',e=>{ST.addOriginal=e.target.value});
   // URL 엔터키
   if(ui)ui.addEventListener('keydown',e=>{if(e.key==='Enter')previewYT()});
+  // 채널 편집 폼
+  const cyu=$('chYtUrlInp');if(cyu)cyu.addEventListener('input',e=>{ST.editYtUrl=e.target.value});
+  const cav=$('chAvatarInp');if(cav)cav.addEventListener('input',e=>{ST.editAvatarUrl=e.target.value});
+  const cde=$('chDescInp');if(cde)cde.addEventListener('input',e=>{ST.editDesc=e.target.value});
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -436,32 +445,59 @@ function getAllStreamers(){
     if(!map[c.streamer].latest||new Date(c.addedAt)>new Date(map[c.streamer].latest))
       map[c.streamer].latest=c.addedAt;
   });
+  // channelInfo 병합 (YouTube 채널 URL, 프로필 이미지 등)
+  Object.values(map).forEach(s=>{
+    const ci=ST.channelInfo[s.name]||{};
+    s.ytUrl=ci.ytUrl||'';
+    s.avatarUrl=ci.avatarUrl||'';
+    s.description=ci.description||'';
+  });
   return Object.values(map).sort((a,b)=>b.count-a.count);
 }
 
 function renderChannel(){
   if(!ST.channelStreamer){
-    // 전체 채널 목록
+    // ── 전체 채널 목록 ──
     const streamers=getAllStreamers();
     return`<div style="max-width:1100px;margin:0 auto;padding:24px 16px">
-      <h2 style="font-size:22px;font-weight:800;margin-bottom:20px">📺 채널 목록</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <h2 style="font-size:22px;font-weight:800">📺 채널 목록</h2>
+        <div style="font-size:12px;color:${C.dim}">${streamers.length}개 채널</div>
+      </div>
       ${streamers.length===0
-        ?`<div style="text-align:center;padding:80px;color:${C.dim}">아직 등록된 스트리머가 없습니다</div>`
-        :`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px">
+        ?`<div style="text-align:center;padding:80px;color:${C.dim}">
+            <div style="font-size:48px;margin-bottom:14px">📺</div>
+            <div>아직 등록된 스트리머가 없습니다</div>
+          </div>`
+        :`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">
           ${streamers.map(s=>{
             const col=getColor(s.name);
+            const hasYT=!!s.ytUrl;
             return`<div onclick="goChannel('${esc(s.name)}')" class="card"
-              style="background:${C.card};border:1px solid ${C.b};border-radius:16px;padding:20px;cursor:pointer"
-              onmouseenter="this.style.borderColor='${col}66';this.style.boxShadow='0 4px 20px ${col}22'"
+              style="background:${C.card};border:1px solid ${C.b};border-radius:18px;padding:20px;cursor:pointer;position:relative;overflow:hidden"
+              onmouseenter="this.style.borderColor='${col}66';this.style.boxShadow='0 4px 24px ${col}22'"
               onmouseleave="this.style.borderColor='${C.b}';this.style.boxShadow='none'">
-              <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,${col},${col}88);display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:12px;color:#fff;font-weight:800">${esc(s.name[0])}</div>
-              <div style="font-size:16px;font-weight:700;margin-bottom:4px">${esc(s.name)}</div>
-              ${s.agency?`<div style="font-size:11px;color:${col};background:${col}22;border:1px solid ${col}44;border-radius:20px;padding:2px 8px;display:inline-block;margin-bottom:10px">${esc(s.agency)}</div>`:'<div style="height:24px;margin-bottom:4px"></div>'}
-              <div style="display:flex;gap:12px;font-size:12px;color:${C.muted}">
+              <div style="position:absolute;top:0;right:0;width:80px;height:80px;background:radial-gradient(circle at 80% 20%,${col}18,transparent 70%);pointer-events:none"></div>
+              <!-- 아바타 -->
+              <div style="position:relative;width:52px;height:52px;margin-bottom:12px">
+                ${s.avatarUrl
+                  ?`<img src="${esc(s.avatarUrl)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid ${col}55" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+                  :''}
+                <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,${col},${col}88);display:${s.avatarUrl?'none':'flex'};align-items:center;justify-content:center;font-size:22px;color:#fff;font-weight:800;border:2px solid ${col}44">${esc(s.name[0])}</div>
+                ${hasYT?`<div style="position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;background:#FF0000;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:8px;border:1px solid #0008">▶</div>`:''}
+              </div>
+              <div style="font-size:16px;font-weight:700;margin-bottom:3px">${esc(s.name)}</div>
+              ${s.agency?`<div style="font-size:10px;color:${col};background:${col}22;border:1px solid ${col}44;border-radius:20px;padding:2px 8px;display:inline-block;margin-bottom:8px">${esc(s.agency)}</div>`:`<div style="height:22px;margin-bottom:6px"></div>`}
+              ${s.description?`<div style="font-size:11px;color:${C.muted};margin-bottom:10px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${esc(s.description)}</div>`:''}
+              <div style="display:flex;gap:10px;font-size:12px;color:${C.muted};align-items:center">
                 <span>🎵 ${s.count}곡</span>
                 <span>❤️ ${fmtNum(s.likes)}</span>
-                <span style="margin-left:auto;color:${C.dim}">${timeAgo(s.latest)}</span>
+                <span style="margin-left:auto;font-size:10px;color:${C.dim}">${timeAgo(s.latest)}</span>
               </div>
+              ${hasYT?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid ${C.b};display:flex;align-items:center;gap:5px">
+                <div style="width:6px;height:6px;border-radius:50%;background:#FF0000"></div>
+                <span style="font-size:10px;color:${C.dim}">YouTube 채널 연결됨</span>
+              </div>`:''}
             </div>`;
           }).join('')}
         </div>`
@@ -469,30 +505,72 @@ function renderChannel(){
     </div>`;
   }
 
-  // 개별 채널
+  // ── 개별 채널 상세 ──
   const covers=ST.covers.filter(c=>c.streamer===ST.channelStreamer);
   const col=getColor(ST.channelStreamer);
+  const ci=ST.channelInfo[ST.channelStreamer]||{};
   const totalLikes=covers.reduce((s,c)=>s+(ST.likes[c.id]||0),0);
   const totalViews=covers.reduce((s,c)=>s+(ST.views[c.id]||0),0);
+  const hasYT=!!ci.ytUrl;
 
   return`<div style="max-width:1100px;margin:0 auto;padding:24px 16px">
     <button onclick="ST.channelStreamer=null;render()" style="background:none;border:none;color:${C.muted};font-size:13px;margin-bottom:20px;display:flex;align-items:center;gap:4px">← 채널 목록</button>
-    <div style="background:linear-gradient(135deg,${col}22,${C.s2});border:1px solid ${col}44;border-radius:20px;padding:24px;margin-bottom:20px">
-      <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
-        <div style="width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,${col},${col}88);display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff;font-weight:800;flex-shrink:0">${esc(ST.channelStreamer[0])}</div>
-        <div>
-          <h2 style="font-size:22px;font-weight:800;margin-bottom:4px">${esc(ST.channelStreamer)}</h2>
-          ${covers[0]?.agency?`<div style="font-size:12px;color:${col}">${esc(covers[0].agency)}</div>`:''}
+
+    <!-- 채널 헤더 -->
+    <div style="background:linear-gradient(135deg,${col}18,${C.s2});border:1px solid ${col}44;border-radius:22px;padding:26px;margin-bottom:20px;position:relative;overflow:hidden">
+      <div style="position:absolute;top:-50px;right:-50px;width:200px;height:200px;background:radial-gradient(circle,${col}18,transparent 70%);pointer-events:none"></div>
+
+      <div style="display:flex;align-items:flex-start;gap:20px;margin-bottom:20px;flex-wrap:wrap">
+        <!-- 아바타 -->
+        <div style="position:relative;flex-shrink:0">
+          ${ci.avatarUrl
+            ?`<img src="${esc(ci.avatarUrl)}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid ${col}66" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+            :''}
+          <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,${col},${col}88);display:${ci.avatarUrl?'none':'flex'};align-items:center;justify-content:center;font-size:34px;color:#fff;font-weight:800;border:3px solid ${col}44">${esc(ST.channelStreamer[0])}</div>
+          ${hasYT?`<div style="position:absolute;bottom:0;right:0;width:22px;height:22px;background:#FF0000;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;border:2px solid ${C.s2}">▶</div>`:''}
+        </div>
+
+        <!-- 이름 / 소속 / 설명 -->
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">
+            <h2 style="font-size:24px;font-weight:800">${esc(ST.channelStreamer)}</h2>
+            ${covers[0]?.agency?`<span style="font-size:11px;color:${col};background:${col}22;border:1px solid ${col}44;border-radius:20px;padding:3px 10px">${esc(covers[0].agency)}</span>`:''}
+          </div>
+          ${ci.description?`<p style="font-size:13px;color:${C.muted};margin-bottom:12px;line-height:1.6">${esc(ci.description)}</p>`:''}
+
+          <!-- YouTube 채널 버튼 / 연결 안내 -->
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            ${hasYT
+              ?`<a href="${esc(ci.ytUrl)}" target="_blank" onclick="event.stopPropagation()"
+                  style="display:inline-flex;align-items:center;gap:6px;background:#FF000022;border:1px solid #FF000055;border-radius:10px;padding:7px 14px;color:#FF4444;font-size:13px;font-weight:700;text-decoration:none">
+                  <span style="font-size:15px">▶</span> YouTube 공식 채널
+                </a>`
+              :`<div style="font-size:12px;color:${C.dim};display:flex;align-items:center;gap:5px">
+                  <span>📭</span> YouTube 채널 미연결
+                </div>`
+            }
+            ${ST.isAdmin?`<button onclick="openEditChannel('${esc(ST.channelStreamer)}')"
+              style="background:${col}22;border:1px solid ${col}44;border-radius:10px;padding:7px 12px;color:${col};font-size:12px;font-weight:600">
+              ✏️ 채널 정보 편집
+            </button>`:''}
+          </div>
         </div>
       </div>
-      <div style="display:flex;gap:12px">
+
+      <!-- 통계 -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${[{i:'🎵',v:covers.length+'곡',l:'커버곡'},{i:'❤️',v:fmtNum(totalLikes),l:'총 좋아요'},{i:'👁',v:fmtNum(totalViews),l:'총 조회수'}].map(s=>`
-          <div style="background:${C.card};border:1px solid ${C.b};border-radius:12px;padding:10px 16px;flex:1;text-align:center">
+          <div style="background:${C.card};border:1px solid ${C.b};border-radius:12px;padding:10px 18px;flex:1;min-width:80px;text-align:center">
             <div style="font-size:16px;margin-bottom:2px">${s.i}</div>
-            <div style="font-size:17px;font-weight:700">${s.v}</div>
+            <div style="font-size:18px;font-weight:700">${s.v}</div>
             <div style="font-size:11px;color:${C.dim}">${s.l}</div>
           </div>`).join('')}
       </div>
+    </div>
+
+    <!-- 커버곡 그리드 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:700">커버곡 <span style="color:${col}">${covers.length}</span></div>
     </div>
     ${covers.length===0
       ?`<div style="text-align:center;padding:60px;color:${C.dim}">커버곡이 없습니다</div>`
@@ -560,6 +638,64 @@ function renderRanking(){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// 채널 편집 모달 (관리자 전용)
+// ═══════════════════════════════════════════════════════════════
+function renderChannelEditModal(){
+  const name=ST.editChannelFor;
+  const col=getColor(name||'?');
+  const ci=ST.channelInfo[name]||{};
+  const inp=`background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:9px 12px;color:${C.txt};font-size:13px;outline:none;width:100%`;
+
+  return`<div onclick="closeEditChannel()" style="position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:600;padding:20px">
+    <div onclick="event.stopPropagation()" style="background:${C.card};border:1px solid ${col}44;border-radius:22px;padding:28px;width:100%;max-width:480px;box-shadow:0 0 50px ${col}22">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:22px">
+        <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${col},${col}88);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;font-weight:800">${esc((name||'?')[0])}</div>
+        <div>
+          <div style="font-size:16px;font-weight:800">${esc(name)} 채널 정보 편집</div>
+          <div style="font-size:11px;color:${C.dim}">관리자 전용</div>
+        </div>
+      </div>
+
+      <!-- YouTube 채널 URL -->
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:6px">📺 YouTube 채널 URL</label>
+        <input id="chYtUrlInp" type="text" placeholder="https://www.youtube.com/@channelname"
+          value="${esc(ST.editYtUrl||ci.ytUrl||'')}"
+          style="${inp}">
+        <div style="font-size:11px;color:${C.dim};margin-top:4px">예: https://www.youtube.com/@gosegu / https://youtube.com/channel/UC...</div>
+      </div>
+
+      <!-- 프로필 이미지 URL -->
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:6px">🖼 프로필 이미지 URL <span style="font-weight:400;color:${C.dim}">(선택)</span></label>
+        <input id="chAvatarInp" type="text" placeholder="https://yt3.ggpht.com/..."
+          value="${esc(ST.editAvatarUrl||ci.avatarUrl||'')}"
+          style="${inp}">
+        <div style="font-size:11px;color:${C.dim};margin-top:4px">YouTube 채널 프로필 사진 URL을 붙여넣으세요</div>
+        ${(ST.editAvatarUrl||ci.avatarUrl)?`<img src="${esc(ST.editAvatarUrl||ci.avatarUrl)}" style="margin-top:8px;width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid ${col}44" onerror="this.style.display='none'">`:''}
+      </div>
+
+      <!-- 채널 소개 -->
+      <div style="margin-bottom:20px">
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:6px">✏️ 채널 소개 <span style="font-weight:400;color:${C.dim}">(선택)</span></label>
+        <textarea id="chDescInp" placeholder="스트리머 소개 한 줄..."
+          style="${inp};resize:vertical;min-height:60px;line-height:1.5">${esc(ST.editDesc||ci.description||'')}</textarea>
+      </div>
+
+      ${ST.editChError?`<div style="color:${C.pink};font-size:12px;margin-bottom:12px">⚠ ${esc(ST.editChError)}</div>`:''}
+
+      <div style="display:flex;gap:8px">
+        <button onclick="closeEditChannel()" style="flex:1;background:${C.s1};border:1px solid ${C.b};border-radius:11px;padding:11px;color:${C.muted};font-size:13px">취소</button>
+        ${ci.ytUrl?`<button onclick="clearChannelInfo('${esc(name)}')" style="background:${C.pink}22;border:1px solid ${C.pink}44;border-radius:11px;padding:11px 14px;color:${C.pink};font-size:13px;font-weight:600">삭제</button>`:''}
+        <button onclick="saveChannelInfo('${esc(name)}')" style="flex:2;background:linear-gradient(135deg,${col},${col}cc);border:none;border-radius:11px;padding:11px;color:#fff;font-size:13px;font-weight:700">
+          ${ST.editChLoading?'<span class="spin">⏳</span> 저장 중...':'💾 저장'}
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
 // 가사 페이지
 // ═══════════════════════════════════════════════════════════════
 function renderLyrics(){
@@ -698,6 +834,46 @@ window.goChannel=function(streamer){
   ST.page='channel';ST.channelStreamer=streamer;ST.detailId=null;render();
 }
 
+window.openEditChannel=function(name){
+  const ci=ST.channelInfo[name]||{};
+  ST.editChannelFor=name;
+  ST.editYtUrl=ci.ytUrl||'';
+  ST.editAvatarUrl=ci.avatarUrl||'';
+  ST.editDesc=ci.description||'';
+  ST.editChError='';
+  ST.editChLoading=false;
+  render();
+  setTimeout(()=>{const i=$('chYtUrlInp');if(i)i.focus();},50);
+}
+
+window.closeEditChannel=function(){
+  ST.editChannelFor=null;ST.editChError='';render();
+}
+
+window.saveChannelInfo=async function(name){
+  const ytUrl=($('chYtUrlInp')||{}).value||ST.editYtUrl;
+  const avatarUrl=($('chAvatarInp')||{}).value||ST.editAvatarUrl;
+  const description=($('chDescInp')||{}).value||ST.editDesc;
+  if(!ytUrl){ST.editChError='YouTube 채널 URL을 입력해 주세요';render();return;}
+  // 간단한 URL 검증
+  if(!ytUrl.includes('youtube.com')&&!ytUrl.includes('youtu.be')){ST.editChError='YouTube URL 형식이 올바르지 않습니다';render();return;}
+  ST.editChLoading=true;ST.editChError='';render();
+  ST.channelInfo[name]={ytUrl,avatarUrl,description};
+  await sSet(CHKEY,ST.channelInfo);
+  ST.editChLoading=false;
+  ST.editChannelFor=null;
+  showToast(`✓ ${name} 채널 정보가 저장되었습니다`);
+}
+
+window.clearChannelInfo=async function(name){
+  if(!confirm(`${name}의 채널 정보를 삭제할까요?`))return;
+  delete ST.channelInfo[name];
+  await sSet(CHKEY,ST.channelInfo);
+  ST.editChannelFor=null;
+  showToast('채널 정보가 삭제되었습니다');
+}
+
+
 window.goLyrics=function(id){
   ST.page='lyrics';ST.lyricsId=id;ST.lyricsText='';ST.lyricsLoading=false;ST.detailId=null;render();
 }
@@ -773,33 +949,19 @@ window.deleteCover=async function(id){
 window.loadLyrics=async function(){
   const c=ST.covers.find(x=>x.id===ST.lyricsId);
   if(!c)return;
-
-  ST.lyricsLoading=true;
-  ST.lyricsText='';
-  render();
-
+  ST.lyricsLoading=true;ST.lyricsText='';render();
   try{
-    const res=await fetch('/.netlify/functions/lyrics',{
+    const res=await fetch('/api/lyrics',{
       method:'POST',
-      headers:{
-        'Content-Type':'application/json'
-      },
-      body:JSON.stringify({
-        title:c.title,
-        original:c.original||'',
-        streamer:c.streamer,
-      }),
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title:c.title,original:c.original||'',streamer:c.streamer}),
     });
-
     const data=await res.json();
-
     ST.lyricsText=data.text||'가사를 불러올 수 없습니다.';
   }catch{
     ST.lyricsText='가사를 불러오는 중 오류가 발생했습니다.';
   }
-
-  ST.lyricsLoading=false;
-  render();
+  ST.lyricsLoading=false;render();
 }
 
 function showToast(msg,type='ok'){
@@ -849,6 +1011,7 @@ function _renderWithModal(){
   html+=`</div>`;
   if(ST.detailId)html+=renderDetail();
   if(_showAdminModal)html+=renderAdminModal();
+  if(ST.editChannelFor)html+=renderChannelEditModal();
   if(ST.toast)html+=renderToast();
   root.innerHTML=html;
   bindEvents();
@@ -856,17 +1019,22 @@ function _renderWithModal(){
 }
 
 // ESC 키
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ST.detailId)closeDetail();else if(e.key==='Escape'&&_showAdminModal)closeAdminLogin();});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&ST.editChannelFor)closeEditChannel();
+  else if(e.key==='Escape'&&ST.detailId)closeDetail();
+  else if(e.key==='Escape'&&_showAdminModal)closeAdminLogin();
+});
 
 // ═══════════════════════════════════════════════════════════════
 // 초기 로드 + 폴링
 // ═══════════════════════════════════════════════════════════════
 (async()=>{
   ST.loading=true;render();
-  const [c,l,v]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY)]);
+  const [c,l,v,ch]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY),sGet(CHKEY)]);
   ST.covers=c||[];
   ST.likes=l||{};
   ST.views=v||{};
+  ST.channelInfo=ch||{};
   try{
     const ml=JSON.parse(localStorage.getItem(MY_LIKES_KEY)||'[]');
     ST.myLikes=new Set(ml);
@@ -876,11 +1044,12 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ST.detailId)closeDe
 
   // 5초마다 공유 데이터 동기화
   _pollTimer=setInterval(async()=>{
-    const[c,l,v]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY)]);
+    const[c,l,v,ch]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY),sGet(CHKEY)]);
     let changed=false;
     if(c&&JSON.stringify(c)!==JSON.stringify(ST.covers)){ST.covers=c;changed=true}
     if(l&&JSON.stringify(l)!==JSON.stringify(ST.likes)){ST.likes=l;changed=true}
     if(v&&JSON.stringify(v)!==JSON.stringify(ST.views)){ST.views=v;changed=true}
+    if(ch&&JSON.stringify(ch)!==JSON.stringify(ST.channelInfo)){ST.channelInfo=ch;changed=true}
     if(changed)render();
   },5000);
 })();
