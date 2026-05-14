@@ -1,69 +1,63 @@
 exports.handler = async (event) => {
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: 'Method Not Allowed'
-    };
-  }
-
   try {
-    const body = JSON.parse(event.body);
-    const { title, original, streamer } = body;
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 500,
-        messages: [
-          {
-            role: 'user',
-            content:
-`다음 곡의 가사를 알려주세요.
-
-곡명: ${title}
-원곡: ${original || '미상'}
-스트리머: ${streamer}
-
-가사만 출력해주세요.`
-          }
-        ],
-      }),
-    });
-
-    const data = await response.json();
-
-    console.log("Anthropic:", JSON.stringify(data));
-
-    if (!response.ok) {
+    if (event.httpMethod !== 'POST') {
       return {
-        statusCode: response.status,
+        statusCode: 405,
         body: JSON.stringify({
-          error: data.error?.message || 'Anthropic API Error'
+          error: 'Method Not Allowed'
         }),
       };
     }
 
-    const text =
-      data.content?.map(v => v.text).join('') ||
-      '가사를 불러올 수 없습니다.';
+    const body = JSON.parse(event.body);
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 300,
+        messages: [
+          {
+            role: 'user',
+            content: `곡 제목: ${body.title}
+
+원곡: ${body.original || '미상'}
+
+스트리머: ${body.streamer}
+
+이 곡의 가사를 알려주세요.`
+          }
+        ]
+      })
+    });
+
+    const data = await response.json();
+
+    console.log(data);
+
+    if (!response.ok) {
+      return {
+        statusCode: response.status,
+        body: JSON.stringify(data),
+      };
+    }
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ text }),
       headers: {
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify({
+        text: data.content?.[0]?.text || '가사를 찾을 수 없습니다.'
+      }),
     };
 
   } catch (e) {
-    console.error(e);
-
     return {
       statusCode: 500,
       body: JSON.stringify({
