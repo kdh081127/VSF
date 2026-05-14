@@ -35,3 +35,5 @@ exports.handler = async (event) => {
     };
   }
 };
+
+export const config = { path: '/api/lyrics' };
