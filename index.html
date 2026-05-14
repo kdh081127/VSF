@@ -775,7 +775,7 @@ window.loadLyrics=async function(){
   if(!c)return;
   ST.lyricsLoading=true;ST.lyricsText='';render();
   try{
-    const res=await fetch('/api/lyrics',{
+    const res=await fetch('/.netlify/functions/lyrics',{{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({title:c.title,original:c.original||'',streamer:c.streamer}),
