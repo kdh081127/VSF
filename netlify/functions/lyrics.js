@@ -25,6 +25,14 @@ export default async (req) => {
     });
 
     const data = await response.json();
+    const data = await response.json();
+
+// 이 줄 추가
+console.log('API response:', JSON.stringify(data));
+
+const text = data.content?.map(b => b.text || '').join('') 
+  || data.error?.message  // 에러 메시지도 반환
+  || '가사를 불러올 수 없습니다.';
     const text = data.content?.map(b => b.text || '').join('') || '가사를 불러올 수 없습니다.';
 
     return new Response(JSON.stringify({ text }), {
