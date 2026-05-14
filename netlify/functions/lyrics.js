@@ -30,7 +30,24 @@ export default async (req) => {
     });
 
     const data = await response.json();
-    const text = data.content?.map(b => b.text || '').join('') || '가사를 불러올 수 없습니다.';
+
+console.log("Claude Response:", JSON.stringify(data));
+
+if (data.error) {
+  return {
+    statusCode: 500,
+    body: JSON.stringify({
+      error: data.error.message || 'Anthropic API Error'
+    }),
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+}
+
+const text =
+  data.content?.map(v => v.text || '').join('') ||
+  '가사를 불러올 수 없습니다.';
 
     return new Response(JSON.stringify({ text }), {
       status: 200,
