@@ -1,16 +1,5 @@
 exports.handler = async (event) => {
   try {
-    if (event.httpMethod !== 'POST') {
-      return {
-        statusCode: 405,
-        body: JSON.stringify({
-          error: 'Method Not Allowed'
-        }),
-      };
-    }
-
-    const body = JSON.parse(event.body);
-
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -19,50 +8,28 @@ exports.handler = async (event) => {
         'content-type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 300,
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 100,
         messages: [
           {
             role: 'user',
-            content: `곡 제목: ${body.title}
-
-원곡: ${body.original || '미상'}
-
-스트리머: ${body.streamer}
-
-이 곡의 가사를 알려주세요.`
+            content: '안녕하세요'
           }
         ]
       })
     });
 
-    const data = await response.json();
-
-    console.log(data);
-
-    if (!response.ok) {
-      return {
-        statusCode: response.status,
-        body: JSON.stringify(data),
-      };
-    }
+    const text = await response.text();
 
     return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        text: data.content?.[0]?.text || '가사를 찾을 수 없습니다.'
-      }),
+      statusCode: response.status,
+      body: text
     };
 
   } catch (e) {
     return {
       statusCode: 500,
-      body: JSON.stringify({
-        error: e.message
-      }),
+      body: e.message
     };
   }
 };
