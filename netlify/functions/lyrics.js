@@ -25,7 +25,6 @@ export default async (req) => {
     });
 
     const data = await response.json();
-    const data = await response.json();
 
 // 이 줄 추가
 console.log('API response:', JSON.stringify(data));
