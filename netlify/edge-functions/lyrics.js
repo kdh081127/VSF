@@ -1,4 +1,13 @@
 export default async (req) => {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  
+  // 임시 디버깅용
+  if (!apiKey) {
+    return new Response(JSON.stringify({ text: 'API 키 없음!' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
   if (req.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405 });
   }
