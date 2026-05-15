@@ -54,7 +54,7 @@ const C={
 };
 
 const AGENCIES=['전체','이세계아이돌','스텔라이브','버튜버 코리아','독립'];
-const TAGS_LIST=['케이팝','발라드','댄스팝','인디팝','레트로','감성','퍼포먼스','J-POP','팝','OST','올드팝'];
+const TAGS_LIST=['케이팝','발라드','뮤지컬','인디','레트로','재즈','락','J-POP','팝','OST','보컬로이드'];
 const COLORS=['#7C5CFC','#F0568A','#4DC9F0','#4DFFA0','#FFAA44','#FF6B6B','#A78BFA','#34D399','#F59E0B','#60A5FA'];
 const SKEY='vsf_covers_v4';
 const LKEY='vsf_likes_v4';
@@ -349,7 +349,7 @@ function renderHome(){
         ${AGENCIES.map(a=>`<button onclick="setF('agency','${esc(a)}')" style="background:${ST.agency===a?C.pur+'22':C.card};border:1px solid ${ST.agency===a?C.pur+'66':C.b};color:${ST.agency===a?C.purL:C.muted};border-radius:20px;padding:4px 11px;font-size:12px;font-weight:${ST.agency===a?600:400}">${esc(a)}</button>`).join('')}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:9px">
-        <span style="font-size:11px;color:${C.dim};font-weight:600;min-width:36px">태그</span>
+        <span style="font-size:11px;color:${C.dim};font-weight:600;min-width:36px">장르</span>
         <button onclick="setF('tag','전체')" style="background:${ST.tag==='전체'?C.pink+'22':C.card};border:1px solid ${ST.tag==='전체'?C.pink+'66':C.b};color:${ST.tag==='전체'?C.pinkL:C.muted};border-radius:20px;padding:4px 11px;font-size:12px">전체</button>
         ${TAGS_LIST.map(t=>`<button onclick="setF('tag','${esc(t)}')" style="background:${ST.tag===t?C.pink+'22':C.card};border:1px solid ${ST.tag===t?C.pink+'66':C.b};color:${ST.tag===t?C.pinkL:C.muted};border-radius:20px;padding:4px 11px;font-size:12px;font-weight:${ST.tag===t?600:400}">${esc(t)}</button>`).join('')}
       </div>
@@ -481,7 +481,7 @@ function renderAdd(){
           style="width:100%;background:${C.card};border:1px solid ${C.b};border-radius:10px;padding:9px 12px;color:${C.txt};font-size:13px;outline:none">
       </div>
       <div>
-        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:8px">태그</label>
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:8px">장르</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${TAGS_LIST.map(t=>{
             const on=ST.addTags.includes(t);
