@@ -128,17 +128,17 @@ function _onFbReady(fn){if(window._fbReady)fn();else window._fbQ.push(fn);}
     // ── Auth 로그인/로그아웃 ──
     window._authLogin=async(email,password)=>{
       const cred=await signInWithEmailAndPassword(auth,email,password);
-      // ID 토큰에서 custom claim 'admin' 확인
-      const token=await cred.user.getIdTokenResult();
-      return{user:cred.user, isAdmin:!!token.claims.admin};
+      // Firestore admins 컬렉션에 UID가 있는지 확인
+      const adminSnap=await getDoc(doc(db,'admins',cred.user.uid));
+      return{user:cred.user, isAdmin:adminSnap.exists()};
     };
     window._authLogout=async()=>signOut(auth);
 
     // ── 세션 복원: 페이지 새로고침 시 로그인 상태 유지 ──
     onAuthStateChanged(auth,async user=>{
       if(user){
-        const token=await user.getIdTokenResult();
-        if(token.claims.admin){
+        const adminSnap=await getDoc(doc(db,'admins',user.uid));
+        if(adminSnap.exists()){
           ST.isAdmin=true;
           render();
         }
