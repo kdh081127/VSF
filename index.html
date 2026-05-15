@@ -766,17 +766,19 @@ function renderLyrics(){
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:20px">
         <h3 style="font-size:16px;font-weight:700">🎵 가사</h3>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <!-- 직접 입력 버튼 -->
+          ${ST.isAdmin?`
+          <!-- 직접 입력 버튼 (관리자) -->
           <button onclick="toggleLyricsEdit()" style="background:${ST.lyricsEditMode?C.amb+'33':C.card};border:1px solid ${ST.lyricsEditMode?C.amb+'66':C.b};border-radius:10px;padding:7px 12px;color:${ST.lyricsEditMode?C.amb:C.muted};font-size:12px;font-weight:600">
             ${ST.lyricsEditMode?'✕ 취소':'✏️ 직접 입력'}
           </button>
-          <!-- AI 불러오기 -->
+          <!-- AI 불러오기 (관리자) -->
           ${!ST.lyricsEditMode?`<button onclick="loadLyrics()" ${ST.lyricsLoading?'disabled':''} style="background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:10px;padding:7px 14px;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px;opacity:${ST.lyricsLoading?0.7:1}">
             ${ST.lyricsLoading?`<span class="spin">⏳</span>`:displayText?'🔄':'✨ AI'}
             <span class="hide-mobile">${ST.lyricsLoading?'불러오는 중...':displayText?'다시 불러오기':'가사 불러오기'}</span>
           </button>`:''}
-          <!-- 저장 -->
+          <!-- 저장 (관리자) -->
           ${ST.lyricsEditMode?`<button onclick="saveLyricsManual('${esc(c.id)}')" style="background:linear-gradient(135deg,${C.grn}99,${C.grn}55);border:1px solid ${C.grn}66;border-radius:10px;padding:7px 14px;color:${C.grn};font-size:12px;font-weight:700">💾 저장</button>`:''}
+          `:''}
         </div>
       </div>
 
