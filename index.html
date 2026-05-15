@@ -53,7 +53,7 @@ const C={
   txt:'#EEE9FF',muted:'#8884AA',dim:'#3E3C58',
 };
 
-const AGENCIES=['전체','이세계아이돌','스텔라이브','버튜버 코리아','독립'];
+const AGENCIES=['전체','이세계아이돌','스텔라이브','버튜버 코리아','독립','쓰리와이코퍼레이션'];
 const TAGS_LIST=['케이팝','발라드','뮤지컬','인디','레트로','재즈','락','J-POP','팝','OST','보컬로이드'];
 const COLORS=['#7C5CFC','#F0568A','#4DC9F0','#4DFFA0','#FFAA44','#FF6B6B','#A78BFA','#34D399','#F59E0B','#60A5FA'];
 const SKEY='vsf_covers_v4';
@@ -471,7 +471,7 @@ function renderAdd(){
         <div>
           <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:6px">소속사</label>
           <select id="agencyInp" style="width:100%;background:${C.card};border:1px solid ${C.b};border-radius:10px;padding:9px 12px;color:${C.txt};font-size:13px;outline:none">
-            ${['','이세계아이돌','스텔라이브','버튜버 코리아','독립'].map(a=>`<option value="${esc(a)}" ${ST.addAgency===a?'selected':''}>${esc(a||'선택...')}</option>`).join('')}
+            ${['','이세계아이돌','스텔라이브','버튜버 코리아','독립','쓰리와이코퍼레이션'].map(a=>`<option value="${esc(a)}" ${ST.addAgency===a?'selected':''}>${esc(a||'선택...')}</option>`).join('')}
           </select>
         </div>
       </div>
