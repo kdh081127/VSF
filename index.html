@@ -54,7 +54,7 @@ const C={
 };
 
 const AGENCIES=['전체','이세계아이돌','스텔라이브','버튜버 코리아','독립'];
-const TAGS_LIST=['케이팝','발라드','락','인디','재즈','J-POP','팝송','OST','뮤지컬','보컬로이드'];
+const TAGS_LIST=['케이팝','발라드','댄스팝','인디팝','레트로','감성','퍼포먼스','J-POP','팝','OST','올드팝'];
 const COLORS=['#7C5CFC','#F0568A','#4DC9F0','#4DFFA0','#FFAA44','#FF6B6B','#A78BFA','#34D399','#F59E0B','#60A5FA'];
 const SKEY='vsf_covers_v4';
 const LKEY='vsf_likes_v4';
@@ -63,6 +63,8 @@ const MY_LIKES_KEY='vsf_my_likes_local';
 const CHKEY='vsf_channels_v1'; // 채널 정보 (YouTube URL, 프로필 이미지 등)
 const LYRKEY='vsf_lyrics_manual_v1'; // 직접 입력 가사
 const GRID_KEY='vsf_grid_size'; // 그리드 크기 preference
+const POSTKEY='vsf_posts_v1';   // 커뮤니티 게시글
+const NOTICEKEY='vsf_notice_v1'; // 공지사항
 
 // ═══════════════════════════════════════════════════════════════
 // 유틸
@@ -173,6 +175,15 @@ const ST={
   toast:null,
   // 관리자
   isAdmin:false,adminPwInput:'',
+  // 커뮤니티
+  posts:[],          // [{id,type,title,body,author,createdAt,likes,videoUrl}]
+  postLikes:new Set(),
+  postView:null,     // 열린 게시글 id
+  postForm:false,postFormType:'suggest',postFormTitle:'',postFormBody:'',postFormUrl:'',postFormLoading:false,
+  // 공지
+  notice:null,       // {title,body,updatedAt} | null
+  noticeEditMode:false,noticeTitle:'',noticeBody:'',noticeLoading:false,
+  noticeRead:false,  // 이번 세션에서 읽었는지
 };
 
 let _toastTimer=null;
@@ -193,9 +204,13 @@ function render(){
   else if(ST.page==='channel'){html+=renderChannel();}
   else if(ST.page==='ranking'){html+=renderRanking();}
   else if(ST.page==='lyrics'){html+=renderLyrics();}
+  else if(ST.page==='community'){html+=renderCommunity();}
   html+=`</div>`;
   if(ST.detailId)html+=renderDetail();
   if(ST.editChannelFor)html+=renderChannelEditModal();
+  if(ST.postView)html+=renderPostModal();
+  if(ST.postForm)html+=renderPostForm();
+  if(ST.noticeEditMode)html+=renderNoticeEditModal();
   if(ST.toast)html+=renderToast();
   root.innerHTML=html;
   bindEvents();
@@ -217,6 +232,13 @@ function bindEvents(){
   const cde=$('chDescInp');if(cde)cde.addEventListener('input',e=>{ST.editDesc=e.target.value});
   // 가사 직접 입력
   const lei=$('lyricsEditInp');if(lei)lei.addEventListener('input',e=>{ST.lyricsEditText=e.target.value});
+  // 게시글 폼
+  const pti=$('postTitleInp');if(pti)pti.addEventListener('input',e=>{ST.postFormTitle=e.target.value});
+  const pbi=$('postBodyInp');if(pbi)pbi.addEventListener('input',e=>{ST.postFormBody=e.target.value});
+  const pui=$('postUrlInp');if(pui)pui.addEventListener('input',e=>{ST.postFormUrl=e.target.value});
+  // 공지 폼
+  const nti=$('noticeTitleInp');if(nti)nti.addEventListener('input',e=>{ST.noticeTitle=e.target.value});
+  const nbi=$('noticeBodyInp');if(nbi)nbi.addEventListener('input',e=>{ST.noticeBody=e.target.value});
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -235,7 +257,7 @@ function renderToast(){
 }
 
 function renderHeader(){
-  const navs=[{k:'home',i:'🏠',l:'홈'},{k:'channel',i:'📺',l:'채널'},{k:'ranking',i:'🏆',l:'랭킹'}];
+  const navs=[{k:'home',i:'🏠',l:'홈'},{k:'channel',i:'📺',l:'채널'},{k:'ranking',i:'🏆',l:'랭킹'},{k:'community',i:'💬',l:'커뮤니티'}];
   return`<div style="background:${C.s1};border-bottom:1px solid ${C.b};padding:0 12px;height:56px;display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:200">
     <button onclick="nav('home')" style="display:flex;align-items:center;gap:6px;background:none;border:none;padding:0;flex-shrink:0">
       <div style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,${C.pur},${C.pink});display:flex;align-items:center;justify-content:center;font-size:17px">🎙</div>
@@ -291,7 +313,20 @@ function renderHome(){
   ];
   const sortOpts=[{k:'added',l:'최근 추가순'},{k:'title',l:'제목순'},{k:'likes',l:'좋아요순'},{k:'views',l:'조회순'}];
 
+  // 공지 배너
+  const noticeBanner=ST.notice?`
+    <div onclick="nav('community')" style="background:linear-gradient(135deg,${C.amb}18,${C.s2});border:1px solid ${C.amb}44;border-radius:14px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:border-color .15s"
+      onmouseenter="this.style.borderColor='${C.amb}88'" onmouseleave="this.style.borderColor='${C.amb}44'">
+      <span style="font-size:18px;flex-shrink:0">📢</span>
+      <div style="flex:1;min-width:0">
+        <span style="font-size:11px;color:${C.amb};font-weight:700;letter-spacing:1px">공지사항</span>
+        <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ST.notice.title)}</div>
+      </div>
+      <span style="font-size:11px;color:${C.dim};flex-shrink:0">${timeAgo(ST.notice.updatedAt)} →</span>
+    </div>`:'';
+
   return`<div style="max-width:1100px;margin:0 auto;padding:24px 16px">
+    ${noticeBanner}
     <!-- 히어로 -->
     <div style="background:linear-gradient(135deg,${C.s2},#0A0A16);border:1px solid ${C.b};border-radius:20px;padding:24px 24px 20px;margin-bottom:20px;position:relative;overflow:hidden">
       <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;background:radial-gradient(circle,${C.pur}18,transparent 70%);pointer-events:none"></div>
@@ -314,7 +349,7 @@ function renderHome(){
         ${AGENCIES.map(a=>`<button onclick="setF('agency','${esc(a)}')" style="background:${ST.agency===a?C.pur+'22':C.card};border:1px solid ${ST.agency===a?C.pur+'66':C.b};color:${ST.agency===a?C.purL:C.muted};border-radius:20px;padding:4px 11px;font-size:12px;font-weight:${ST.agency===a?600:400}">${esc(a)}</button>`).join('')}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:9px">
-        <span style="font-size:11px;color:${C.dim};font-weight:600;min-width:36px">장르</span>
+        <span style="font-size:11px;color:${C.dim};font-weight:600;min-width:36px">태그</span>
         <button onclick="setF('tag','전체')" style="background:${ST.tag==='전체'?C.pink+'22':C.card};border:1px solid ${ST.tag==='전체'?C.pink+'66':C.b};color:${ST.tag==='전체'?C.pinkL:C.muted};border-radius:20px;padding:4px 11px;font-size:12px">전체</button>
         ${TAGS_LIST.map(t=>`<button onclick="setF('tag','${esc(t)}')" style="background:${ST.tag===t?C.pink+'22':C.card};border:1px solid ${ST.tag===t?C.pink+'66':C.b};color:${ST.tag===t?C.pinkL:C.muted};border-radius:20px;padding:4px 11px;font-size:12px;font-weight:${ST.tag===t?600:400}">${esc(t)}</button>`).join('')}
       </div>
@@ -446,7 +481,7 @@ function renderAdd(){
           style="width:100%;background:${C.card};border:1px solid ${C.b};border-radius:10px;padding:9px 12px;color:${C.txt};font-size:13px;outline:none">
       </div>
       <div>
-        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:8px">장르</label>
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:8px">태그</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${TAGS_LIST.map(t=>{
             const on=ST.addTags.includes(t);
@@ -810,6 +845,206 @@ function renderLyrics(){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 커뮤니티 페이지
+// ═══════════════════════════════════════════════════════════════
+const POST_TYPES={
+  suggest:{label:'곡 추천',icon:'🎶',color:'#7C5CFC'},
+  request:{label:'등록 요청',icon:'📥',color:'#4DC9F0'},
+  free:{label:'자유',icon:'💬',color:'#4DFFA0'},
+};
+
+function renderCommunity(){
+  const n=ST.notice;
+  const posts=[...ST.posts].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+
+  return`<div style="max-width:800px;margin:0 auto;padding:24px 16px">
+
+    <!-- 페이지 헤더 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <div>
+        <h2 style="font-size:22px;font-weight:800;margin-bottom:2px">💬 커뮤니티</h2>
+        <p style="font-size:13px;color:${C.muted}">추가했으면 하는 곡 추천, 등록 요청, 자유 대화</p>
+      </div>
+      <button onclick="openPostForm()" style="background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:11px;padding:9px 16px;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;gap:5px">
+        ＋ 글쓰기
+      </button>
+    </div>
+
+    <!-- 공지사항 카드 -->
+    <div style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:12px;color:${C.amb};font-weight:700;letter-spacing:1px;display:flex;align-items:center;gap:5px">📢 공지사항</div>
+        ${ST.isAdmin?`<button onclick="openNoticeEdit()" style="background:${C.amb}22;border:1px solid ${C.amb}44;border-radius:8px;padding:4px 10px;color:${C.amb};font-size:11px;font-weight:600">
+          ${n?'✏️ 수정':'＋ 공지 작성'}
+        </button>`:''}
+      </div>
+      ${n
+        ?`<div style="background:linear-gradient(135deg,${C.amb}14,${C.s2});border:1px solid ${C.amb}44;border-radius:16px;padding:20px">
+            <div style="font-size:16px;font-weight:800;margin-bottom:8px">${esc(n.title)}</div>
+            <div style="font-size:14px;color:${C.muted};line-height:1.9;white-space:pre-wrap">${esc(n.body)}</div>
+            <div style="margin-top:12px;font-size:11px;color:${C.dim}">업데이트 ${timeAgo(n.updatedAt)}</div>
+          </div>`
+        :`<div style="background:${C.s2};border:1px dashed ${C.b};border-radius:16px;padding:20px;text-align:center;color:${C.dim};font-size:13px">
+            ${ST.isAdmin?'위 버튼으로 공지를 작성해보세요':'현재 공지사항이 없습니다'}
+          </div>`
+      }
+    </div>
+
+    <!-- 구분선 -->
+    <div style="height:1px;background:${C.b};margin-bottom:20px"></div>
+
+    <!-- 게시글 목록 -->
+    <div style="margin-bottom:12px;font-size:12px;color:${C.dim}">게시글 <span style="color:${C.purL};font-weight:700">${posts.length}</span>개</div>
+
+    ${posts.length===0
+      ?`<div style="text-align:center;padding:60px 20px;color:${C.dim}">
+          <div style="font-size:48px;margin-bottom:14px">💬</div>
+          <div style="font-size:15px;margin-bottom:6px">아직 게시글이 없어요</div>
+          <div style="font-size:12px">추가했으면 하는 곡이 있으면 추천해보세요!</div>
+        </div>`
+      :`<div style="display:flex;flex-direction:column;gap:10px">
+          ${posts.map(p=>{
+            const pt=POST_TYPES[p.type]||POST_TYPES.free;
+            const liked=ST.postLikes.has(p.id);
+            return`<div onclick="openPost('${esc(p.id)}')" class="card"
+              style="background:${C.card};border:1px solid ${C.b};border-radius:14px;padding:16px 18px;cursor:pointer"
+              onmouseenter="this.style.borderColor='${pt.color}55'" onmouseleave="this.style.borderColor='${C.b}'">
+              <div style="display:flex;align-items:flex-start;gap:12px">
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;flex-wrap:wrap">
+                    <span style="font-size:11px;color:${pt.color};background:${pt.color}22;border:1px solid ${pt.color}44;border-radius:20px;padding:2px 9px;font-weight:700">${pt.icon} ${pt.label}</span>
+                    <span style="font-size:11px;color:${C.dim}">${timeAgo(p.createdAt)}</span>
+                  </div>
+                  <div style="font-size:15px;font-weight:700;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.title)}</div>
+                  <div style="font-size:13px;color:${C.muted};overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.6">${esc(p.body)}</div>
+                  ${p.videoUrl?`<div style="margin-top:7px;font-size:11px;color:${C.pur};display:flex;align-items:center;gap:4px">🔗 YouTube 링크 첨부</div>`:''}
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">
+                  <button onclick="event.stopPropagation();togglePostLike('${esc(p.id)}')"
+                    style="background:none;border:1px solid ${liked?C.pink+'66':C.b};border-radius:8px;padding:4px 8px;color:${liked?C.pink:C.dim};font-size:12px;display:flex;align-items:center;gap:3px">
+                    ${liked?'❤️':'🤍'} ${p.likes||0}
+                  </button>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`
+    }
+  </div>`;
+}
+
+// 게시글 상세 모달
+function renderPostModal(){
+  const p=ST.posts.find(x=>x.id===ST.postView);
+  if(!p)return'';
+  const pt=POST_TYPES[p.type]||POST_TYPES.free;
+  const liked=ST.postLikes.has(p.id);
+  return`<div onclick="closePost()" style="position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:500;padding:20px">
+    <div onclick="event.stopPropagation()" style="background:${C.card};border:1px solid ${pt.color}44;border-radius:22px;max-width:580px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 0 50px ${pt.color}18">
+      <div style="padding:24px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+          <span style="font-size:11px;color:${pt.color};background:${pt.color}22;border:1px solid ${pt.color}44;border-radius:20px;padding:3px 10px;font-weight:700">${pt.icon} ${pt.label}</span>
+          <span style="font-size:11px;color:${C.dim}">${timeAgo(p.createdAt)}</span>
+          <div style="flex:1"></div>
+          ${ST.isAdmin?`<button onclick="deletePost('${esc(p.id)}')" style="background:${C.pink}22;border:1px solid ${C.pink}44;border-radius:8px;padding:4px 10px;color:${C.pink};font-size:11px">삭제</button>`:''}
+          <button onclick="closePost()" style="background:${C.s1};border:1px solid ${C.b};border-radius:8px;padding:4px 10px;color:${C.muted};font-size:11px">✕</button>
+        </div>
+        <div style="font-size:20px;font-weight:800;margin-bottom:14px">${esc(p.title)}</div>
+        <div style="font-size:14px;color:${C.muted};line-height:2;white-space:pre-wrap;margin-bottom:18px">${esc(p.body)}</div>
+        ${p.videoUrl?`<a href="${esc(p.videoUrl)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:${C.pur}22;border:1px solid ${C.pur}44;border-radius:10px;padding:8px 14px;color:${C.purL};font-size:13px;font-weight:600;margin-bottom:16px">
+          ▶ YouTube에서 보기
+        </a>`:''}
+        <div style="display:flex;align-items:center;gap:10px;padding-top:14px;border-top:1px solid ${C.b}">
+          <button onclick="togglePostLike('${esc(p.id)}')"
+            style="background:${liked?C.pink+'22':'none'};border:1px solid ${liked?C.pink+'66':C.b};border-radius:10px;padding:7px 14px;color:${liked?C.pink:C.muted};font-size:13px;display:flex;align-items:center;gap:5px">
+            ${liked?'❤️':'🤍'} ${p.likes||0} 좋아요
+          </button>
+          <div style="flex:1"></div>
+          <button onclick="closePost()" style="background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:7px 14px;color:${C.muted};font-size:13px">닫기</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// 글쓰기 모달
+function renderPostForm(){
+  if(!ST.postForm)return'';
+  const inp=`background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:9px 12px;color:${C.txt};font-size:13px;outline:none;width:100%`;
+  return`<div onclick="closePostForm()" style="position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:550;padding:20px">
+    <div onclick="event.stopPropagation()" style="background:${C.card};border:1px solid ${C.pur}44;border-radius:22px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;padding:26px;box-shadow:0 0 50px ${C.pur}18">
+      <div style="font-size:18px;font-weight:800;margin-bottom:4px">✍️ 글쓰기</div>
+      <div style="font-size:12px;color:${C.muted};margin-bottom:20px">추천, 요청, 자유롭게 이야기해보세요</div>
+
+      <!-- 유형 선택 -->
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:8px">글 유형</label>
+        <div style="display:flex;gap:6px">
+          ${Object.entries(POST_TYPES).map(([k,v])=>`
+            <button onclick="ST.postFormType='${k}';render()" style="flex:1;background:${ST.postFormType===k?v.color+'33':C.s1};border:1px solid ${ST.postFormType===k?v.color+'77':C.b};border-radius:10px;padding:8px 6px;color:${ST.postFormType===k?v.color:C.muted};font-size:12px;font-weight:600">
+              ${v.icon}<br><span style="font-size:10px">${v.label}</span>
+            </button>`).join('')}
+        </div>
+      </div>
+
+      <!-- 제목 -->
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:6px">제목 *</label>
+        <input id="postTitleInp" type="text" placeholder="예: 비비 밤양갱 고세구 버전 추가해주세요" value="${esc(ST.postFormTitle)}" style="${inp}">
+      </div>
+
+      <!-- 내용 -->
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:6px">내용 *</label>
+        <textarea id="postBodyInp" placeholder="자세한 내용을 적어주세요..." style="${inp};resize:vertical;min-height:100px;line-height:1.6">${esc(ST.postFormBody)}</textarea>
+      </div>
+
+      <!-- YouTube URL (선택) -->
+      <div style="margin-bottom:20px">
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:6px">YouTube URL <span style="font-weight:400;color:${C.dim}">(선택 · 원곡/참고 영상)</span></label>
+        <input id="postUrlInp" type="text" placeholder="https://youtu.be/..." value="${esc(ST.postFormUrl)}" style="${inp}">
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button onclick="closePostForm()" style="flex:1;background:${C.s1};border:1px solid ${C.b};border-radius:11px;padding:11px;color:${C.muted};font-size:13px">취소</button>
+        <button onclick="submitPost()" style="flex:2;background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:11px;padding:11px;color:#fff;font-size:13px;font-weight:700">
+          ${ST.postFormLoading?'<span class="spin">⏳</span>':'게시하기'}
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// 공지 편집 모달 (관리자)
+function renderNoticeEditModal(){
+  if(!ST.noticeEditMode)return'';
+  const inp=`background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:9px 12px;color:${C.txt};font-size:13px;outline:none;width:100%`;
+  return`<div onclick="closeNoticeEdit()" style="position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:560;padding:20px">
+    <div onclick="event.stopPropagation()" style="background:${C.card};border:1px solid ${C.amb}44;border-radius:22px;max-width:500px;width:100%;padding:26px;box-shadow:0 0 50px ${C.amb}18">
+      <div style="font-size:18px;font-weight:800;margin-bottom:4px">📢 공지사항 편집</div>
+      <div style="font-size:12px;color:${C.muted};margin-bottom:20px">관리자 전용 · 홈 상단과 커뮤니티에 표시됩니다</div>
+
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:6px">제목 *</label>
+        <input id="noticeTitleInp" type="text" placeholder="공지 제목" value="${esc(ST.noticeTitle)}" style="${inp}">
+      </div>
+      <div style="margin-bottom:20px">
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:6px">내용 *</label>
+        <textarea id="noticeBodyInp" placeholder="공지 내용을 입력하세요..." style="${inp};resize:vertical;min-height:120px;line-height:1.7">${esc(ST.noticeBody)}</textarea>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button onclick="closeNoticeEdit()" style="flex:1;background:${C.s1};border:1px solid ${C.b};border-radius:11px;padding:11px;color:${C.muted};font-size:13px">취소</button>
+        ${ST.notice?`<button onclick="deleteNotice()" style="background:${C.pink}22;border:1px solid ${C.pink}44;border-radius:11px;padding:11px 14px;color:${C.pink};font-size:13px;font-weight:600">삭제</button>`:''}
+        <button onclick="saveNotice()" style="flex:2;background:linear-gradient(135deg,${C.amb}cc,${C.amb}88);border:none;border-radius:11px;padding:11px;color:#000;font-size:13px;font-weight:800">
+          ${ST.noticeLoading?'<span class="spin">⏳</span>':'📢 공지 저장'}
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 상세 모달
 // ═══════════════════════════════════════════════════════════════
 function renderDetail(){
@@ -962,6 +1197,81 @@ window.saveLyricsManual=async function(id){
   showToast('✓ 가사가 저장되었습니다');
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 커뮤니티 액션
+// ═══════════════════════════════════════════════════════════════
+window.openPostForm=function(){
+  ST.postForm=true;ST.postFormTitle='';ST.postFormBody='';ST.postFormUrl='';ST.postFormType='suggest';
+  render();setTimeout(()=>{const i=$('postTitleInp');if(i)i.focus();},50);
+}
+window.closePostForm=function(){ST.postForm=false;render();}
+
+window.submitPost=async function(){
+  const title=($('postTitleInp')||{}).value||ST.postFormTitle;
+  const body=($('postBodyInp')||{}).value||ST.postFormBody;
+  const videoUrl=($('postUrlInp')||{}).value||ST.postFormUrl;
+  if(!title.trim()){showToast('제목을 입력해 주세요','err');return}
+  if(!body.trim()){showToast('내용을 입력해 주세요','err');return}
+  ST.postFormLoading=true;render();
+  const post={
+    id:Date.now().toString(),
+    type:ST.postFormType,
+    title:title.trim(),
+    body:body.trim(),
+    videoUrl:videoUrl.trim(),
+    createdAt:new Date().toISOString(),
+    likes:0,
+  };
+  ST.posts.unshift(post);
+  await sSet(POSTKEY,ST.posts);
+  ST.postFormLoading=false;ST.postForm=false;
+  showToast('✓ 게시글이 등록되었습니다!');
+}
+
+window.openPost=function(id){ST.postView=id;render();}
+window.closePost=function(){ST.postView=null;render();}
+
+window.togglePostLike=function(id){
+  const p=ST.posts.find(x=>x.id===id);if(!p)return;
+  if(ST.postLikes.has(id)){ST.postLikes.delete(id);p.likes=Math.max(0,(p.likes||0)-1);}
+  else{ST.postLikes.add(id);p.likes=(p.likes||0)+1;}
+  sSet(POSTKEY,ST.posts);render();
+}
+
+window.deletePost=async function(id){
+  if(!confirm('게시글을 삭제할까요?'))return;
+  ST.posts=ST.posts.filter(x=>x.id!==id);
+  await sSet(POSTKEY,ST.posts);
+  ST.postView=null;showToast('게시글이 삭제되었습니다');
+}
+
+// 공지 액션
+window.openNoticeEdit=function(){
+  ST.noticeEditMode=true;
+  ST.noticeTitle=ST.notice?.title||'';
+  ST.noticeBody=ST.notice?.body||'';
+  render();setTimeout(()=>{const i=$('noticeTitleInp');if(i)i.focus();},50);
+}
+window.closeNoticeEdit=function(){ST.noticeEditMode=false;render();}
+
+window.saveNotice=async function(){
+  const title=($('noticeTitleInp')||{}).value||ST.noticeTitle;
+  const body=($('noticeBodyInp')||{}).value||ST.noticeBody;
+  if(!title.trim()){showToast('제목을 입력해 주세요','err');return}
+  ST.noticeLoading=true;render();
+  ST.notice={title:title.trim(),body:body.trim(),updatedAt:new Date().toISOString()};
+  await sSet(NOTICEKEY,ST.notice);
+  ST.noticeLoading=false;ST.noticeEditMode=false;
+  showToast('✓ 공지사항이 저장되었습니다');
+}
+
+window.deleteNotice=async function(){
+  if(!confirm('공지사항을 삭제할까요?'))return;
+  ST.notice=null;
+  await sSet(NOTICEKEY,null);
+  ST.noticeEditMode=false;showToast('공지사항이 삭제되었습니다');
+}
+
 window.toggleLike=function(id){
   if(ST.myLikes.has(id)){
     ST.myLikes.delete(id);
@@ -1092,10 +1402,14 @@ function _renderWithModal(){
   else if(ST.page==='channel'){html+=renderChannel();}
   else if(ST.page==='ranking'){html+=renderRanking();}
   else if(ST.page==='lyrics'){html+=renderLyrics();}
+  else if(ST.page==='community'){html+=renderCommunity();}
   html+=`</div>`;
   if(ST.detailId)html+=renderDetail();
   if(_showAdminModal)html+=renderAdminModal();
   if(ST.editChannelFor)html+=renderChannelEditModal();
+  if(ST.postView)html+=renderPostModal();
+  if(ST.postForm)html+=renderPostForm();
+  if(ST.noticeEditMode)html+=renderNoticeEditModal();
   if(ST.toast)html+=renderToast();
   root.innerHTML=html;
   bindEvents();
@@ -1104,7 +1418,10 @@ function _renderWithModal(){
 
 // ESC 키
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'&&ST.editChannelFor)closeEditChannel();
+  if(e.key==='Escape'&&ST.noticeEditMode)closeNoticeEdit();
+  else if(e.key==='Escape'&&ST.postForm)closePostForm();
+  else if(e.key==='Escape'&&ST.postView)closePost();
+  else if(e.key==='Escape'&&ST.editChannelFor)closeEditChannel();
   else if(e.key==='Escape'&&ST.detailId)closeDetail();
   else if(e.key==='Escape'&&_showAdminModal)closeAdminLogin();
 });
@@ -1116,12 +1433,14 @@ document.addEventListener('keydown',e=>{
   ST.loading=true;render();
   // 그리드 크기 복원
   try{const g=localStorage.getItem(GRID_KEY);if(g)ST.gridSize=Number(g)||3;}catch{}
-  const [c,l,v,ch,lyr]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY),sGet(CHKEY),sGet(LYRKEY)]);
+  const [c,l,v,ch,lyr,posts,notice]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY),sGet(CHKEY),sGet(LYRKEY),sGet(POSTKEY),sGet(NOTICEKEY)]);
   ST.covers=c||[];
   ST.likes=l||{};
   ST.views=v||{};
   ST.channelInfo=ch||{};
   ST.manualLyrics=lyr||{};
+  ST.posts=posts||[];
+  ST.notice=notice||null;
   try{
     const ml=JSON.parse(localStorage.getItem(MY_LIKES_KEY)||'[]');
     ST.myLikes=new Set(ml);
@@ -1131,13 +1450,15 @@ document.addEventListener('keydown',e=>{
 
   // 5초마다 공유 데이터 동기화
   _pollTimer=setInterval(async()=>{
-    const[c,l,v,ch,lyr]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY),sGet(CHKEY),sGet(LYRKEY)]);
+    const[c,l,v,ch,lyr,posts,notice]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY),sGet(CHKEY),sGet(LYRKEY),sGet(POSTKEY),sGet(NOTICEKEY)]);
     let changed=false;
     if(c&&JSON.stringify(c)!==JSON.stringify(ST.covers)){ST.covers=c;changed=true}
     if(l&&JSON.stringify(l)!==JSON.stringify(ST.likes)){ST.likes=l;changed=true}
     if(v&&JSON.stringify(v)!==JSON.stringify(ST.views)){ST.views=v;changed=true}
     if(ch&&JSON.stringify(ch)!==JSON.stringify(ST.channelInfo)){ST.channelInfo=ch;changed=true}
     if(lyr&&JSON.stringify(lyr)!==JSON.stringify(ST.manualLyrics)){ST.manualLyrics=lyr;changed=true}
+    if(posts&&JSON.stringify(posts)!==JSON.stringify(ST.posts)){ST.posts=posts;changed=true}
+    if(JSON.stringify(notice)!==JSON.stringify(ST.notice)){ST.notice=notice||null;changed=true}
     if(changed)render();
   },5000);
 })();
