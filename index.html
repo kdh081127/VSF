@@ -91,17 +91,8 @@ async function fetchYTMeta(videoId){
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Firebase Firestore
+// Firebase (Firestore + Auth)
 // ═══════════════════════════════════════════════════════════════
-const _fbCfg={
-  apiKey:"AIzaSyDpezWSNABY7hRhjo3GsjaYYaLBRNUipak",
-  authDomain:"vsf-archive.firebaseapp.com",
-  projectId:"vsf-archive",
-  storageBucket:"vsf-archive.firebasestorage.app",
-  messagingSenderId:"781816955454",
-  appId:"1:781816955454:web:92ed80c3866d06d0c6076f"
-};
-
 window._fbQ=[];
 window._fbReady=false;
 function _onFbReady(fn){if(window._fbReady)fn();else window._fbQ.push(fn);}
@@ -112,21 +103,48 @@ function _onFbReady(fn){if(window._fbReady)fn();else window._fbQ.push(fn);}
   s.textContent=`
     import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
     import{getFirestore,doc,getDoc,setDoc}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-    const app=initializeApp(${JSON.stringify({
+    import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+    const app=initializeApp({
       apiKey:"AIzaSyDpezWSNABY7hRhjo3GsjaYYaLBRNUipak",
       authDomain:"vsf-archive.firebaseapp.com",
       projectId:"vsf-archive",
       storageBucket:"vsf-archive.firebasestorage.app",
       messagingSenderId:"781816955454",
       appId:"1:781816955454:web:92ed80c3866d06d0c6076f"
-    })});
+    });
+
     const db=getFirestore(app);
+    const auth=getAuth(app);
+
+    // ── Firestore 읽기/쓰기 ──
     window._fsGet=async(key)=>{
       try{const snap=await getDoc(doc(db,'vsf',key));return snap.exists()?snap.data().value:null}catch{return null}
     };
     window._fsSet=async(key,val)=>{
-      try{await setDoc(doc(db,'vsf',key),{value:val})}catch(e){console.error(e)}
+      try{await setDoc(doc(db,'vsf',key),{value:val})}catch(e){console.error('Firestore 쓰기 오류:',e)}
     };
+
+    // ── Auth 로그인/로그아웃 ──
+    window._authLogin=async(email,password)=>{
+      const cred=await signInWithEmailAndPassword(auth,email,password);
+      // ID 토큰에서 custom claim 'admin' 확인
+      const token=await cred.user.getIdTokenResult();
+      return{user:cred.user, isAdmin:!!token.claims.admin};
+    };
+    window._authLogout=async()=>signOut(auth);
+
+    // ── 세션 복원: 페이지 새로고침 시 로그인 상태 유지 ──
+    onAuthStateChanged(auth,async user=>{
+      if(user){
+        const token=await user.getIdTokenResult();
+        if(token.claims.admin){
+          ST.isAdmin=true;
+          render();
+        }
+      }
+    });
+
     window._fbReady=true;
     window._fbQ.forEach(f=>f());
   `;
@@ -176,7 +194,7 @@ const ST={
   // 토스트
   toast:null,
   // 관리자
-  isAdmin:false,adminPwInput:'',
+  isAdmin:false,adminLoginError:'',adminLoginLoading:false,
   // 커뮤니티
   posts:[],          // [{id,type,title,body,author,authorId,createdAt,likes,videoUrl,imageUrl}]
   postLikes:new Set(),
@@ -1534,32 +1552,61 @@ function renderNickModal(){
   </div>`;
 }
 
-// 관리자 로그인 모달
+// 관리자 로그인 모달 (Firebase Auth 기반)
 function renderAdminModal(){
   return`<div onclick="closeAdminLogin()" style="position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:600;padding:20px">
     <div onclick="event.stopPropagation()" style="background:${C.card};border:1px solid ${C.pur}44;border-radius:20px;padding:28px;width:100%;max-width:340px;box-shadow:0 0 40px ${C.pur}22">
       <div style="font-size:18px;font-weight:800;margin-bottom:6px">🔒 관리자 로그인</div>
-      <div style="font-size:13px;color:${C.muted};margin-bottom:20px">비밀번호를 입력해 주세요</div>
-      <input id="adminPwInp" type="password" placeholder="비밀번호"
+      <div style="font-size:13px;color:${C.muted};margin-bottom:20px">관리자 이메일과 비밀번호를 입력해 주세요</div>
+      <input id="adminEmailInp" type="email" placeholder="이메일" autocomplete="username"
+        style="width:100%;background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:10px 14px;color:${C.txt};font-size:14px;outline:none;margin-bottom:10px"
+        onkeydown="if(event.key==='Enter')document.getElementById('adminPwInp')?.focus()">
+      <input id="adminPwInp" type="password" placeholder="비밀번호" autocomplete="current-password"
         style="width:100%;background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:10px 14px;color:${C.txt};font-size:14px;outline:none;margin-bottom:10px"
         onkeydown="if(event.key==='Enter')submitAdminLogin()">
-      ${ST.adminPwInput==='__err__'?`<div style="color:${C.pink};font-size:12px;margin-bottom:10px">비밀번호가 틀렸습니다</div>`:''}
+      ${ST.adminLoginError?`<div style="color:${C.pink};font-size:12px;margin-bottom:10px">⚠ ${esc(ST.adminLoginError)}</div>`:''}
       <div style="display:flex;gap:8px;margin-top:4px">
         <button onclick="closeAdminLogin()" style="flex:1;background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:10px;color:${C.muted};font-size:13px">취소</button>
-        <button onclick="submitAdminLogin()" style="flex:1;background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:10px;padding:10px;color:#fff;font-size:13px;font-weight:700">로그인</button>
+        <button id="adminLoginBtn" onclick="submitAdminLogin()" style="flex:1;background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:10px;padding:10px;color:#fff;font-size:13px;font-weight:700">
+          ${ST.adminLoginLoading?'<span class="spin">⏳</span>':'로그인'}
+        </button>
       </div>
     </div>
   </div>`;
 }
 
 let _showAdminModal=false;
-window.openAdminLogin=function(){_showAdminModal=true;ST.adminPwInput='';_renderWithModal();}
-window.closeAdminLogin=function(){_showAdminModal=false;ST.adminPwInput='';_renderWithModal();}
-window.adminLogout=function(){ST.isAdmin=false;showToast('로그아웃 되었습니다');render();}
-window.submitAdminLogin=function(){
+window.openAdminLogin=function(){_showAdminModal=true;ST.adminLoginError='';ST.adminLoginLoading=false;_renderWithModal();}
+window.closeAdminLogin=function(){_showAdminModal=false;ST.adminLoginError='';_renderWithModal();}
+window.adminLogout=async function(){
+  await new Promise(r=>_onFbReady(r));
+  try{await window._authLogout();}catch(e){console.error(e);}
+  ST.isAdmin=false;showToast('로그아웃 되었습니다');render();
+}
+window.submitAdminLogin=async function(){
+  const email=($('adminEmailInp')||{}).value?.trim()||'';
   const pw=($('adminPwInp')||{}).value||'';
-  if(pw==='digogang25'){ST.isAdmin=true;_showAdminModal=false;ST.adminPwInput='';showToast('✓ 관리자로 로그인되었습니다');}
-  else{ST.adminPwInput='__err__';_renderWithModal();setTimeout(()=>{const i=$('adminPwInp');if(i)i.focus();},50);}
+  if(!email||!pw){ST.adminLoginError='이메일과 비밀번호를 입력해 주세요';_renderWithModal();return;}
+  ST.adminLoginLoading=true;ST.adminLoginError='';_renderWithModal();
+  try{
+    await new Promise(r=>_onFbReady(r));
+    const result=await window._authLogin(email,pw);
+    if(!result.isAdmin){
+      // 로그인은 됐지만 관리자가 아닌 경우
+      await window._authLogout();
+      ST.adminLoginError='관리자 권한이 없는 계정입니다';
+      ST.adminLoginLoading=false;_renderWithModal();return;
+    }
+    ST.isAdmin=true;_showAdminModal=false;ST.adminLoginError='';
+    ST.adminLoginLoading=false;showToast('✓ 관리자로 로그인되었습니다');
+  }catch(e){
+    let msg='로그인에 실패했습니다';
+    if(e.code==='auth/user-not-found'||e.code==='auth/wrong-password'||e.code==='auth/invalid-credential')
+      msg='이메일 또는 비밀번호가 올바르지 않습니다';
+    else if(e.code==='auth/too-many-requests')
+      msg='로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요';
+    ST.adminLoginError=msg;ST.adminLoginLoading=false;_renderWithModal();
+  }
 }
 function _renderWithModal(){
   const root=$('root');if(!root)return;
@@ -1584,7 +1631,7 @@ function _renderWithModal(){
   if(ST.toast)html+=renderToast();
   root.innerHTML=html;
   bindEvents();
-  if(_showAdminModal){const i=$('adminPwInp');if(i){i.focus();i.addEventListener('keydown',e=>{if(e.key==='Enter')submitAdminLogin();});}}
+  if(_showAdminModal){const i=$('adminEmailInp');if(i){i.focus();}}
 }
 
 // ESC 키
