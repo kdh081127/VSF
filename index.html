@@ -54,7 +54,7 @@ const C={
 };
 
 const AGENCIES=['전체','이세계아이돌','스텔라이브','버튜버 코리아','독립','쓰리와이코퍼레이션'];
-const TAGS_LIST=['케이팝','발라드','뮤지컬','인디','레트로','재즈','락','J-POP','팝','OST','보컬로이드'];
+const TAGS_LIST=['케이팝','발라드','뮤지컬','인디','레트로','락','보컬로이드','J-POP','팝','OST'];
 const COLORS=['#7C5CFC','#F0568A','#4DC9F0','#4DFFA0','#FFAA44','#FF6B6B','#A78BFA','#34D399','#F59E0B','#60A5FA'];
 const SKEY='vsf_covers_v4';
 const LKEY='vsf_likes_v4';
@@ -63,8 +63,10 @@ const MY_LIKES_KEY='vsf_my_likes_local';
 const CHKEY='vsf_channels_v1'; // 채널 정보 (YouTube URL, 프로필 이미지 등)
 const LYRKEY='vsf_lyrics_manual_v1'; // 직접 입력 가사
 const GRID_KEY='vsf_grid_size'; // 그리드 크기 preference
-const POSTKEY='vsf_posts_v1';   // 커뮤니티 게시글
+const POSTKEY='vsf_posts_v2';   // 커뮤니티 게시글
 const NOTICEKEY='vsf_notice_v1'; // 공지사항
+const COMMENTKEY='vsf_comments_v1'; // 댓글
+const NICKEY='vsf_nicknames_v1'; // 닉네임
 
 // ═══════════════════════════════════════════════════════════════
 // 유틸
@@ -176,10 +178,16 @@ const ST={
   // 관리자
   isAdmin:false,adminPwInput:'',
   // 커뮤니티
-  posts:[],          // [{id,type,title,body,author,createdAt,likes,videoUrl}]
+  posts:[],          // [{id,type,title,body,author,authorId,createdAt,likes,videoUrl,imageUrl}]
   postLikes:new Set(),
   postView:null,     // 열린 게시글 id
-  postForm:false,postFormType:'suggest',postFormTitle:'',postFormBody:'',postFormUrl:'',postFormLoading:false,
+  postForm:false,postFormType:'suggest',postFormTitle:'',postFormBody:'',postFormUrl:'',postFormImageUrl:'',postFormLoading:false,
+  postEditId:null, // 수정 중인 게시글 id
+  // 댓글
+  comments:{}, // {postId:[{id,body,author,authorId,createdAt}]}
+  commentInputs:{}, // {postId: 입력중인 댓글}
+  // 닉네임
+  myId:'', myNick:'', nickModalOpen:false, nickInput:'',
   // 공지
   notice:null,       // {title,body,updatedAt} | null
   noticeEditMode:false,noticeTitle:'',noticeBody:'',noticeLoading:false,
@@ -239,6 +247,14 @@ function bindEvents(){
   // 공지 폼
   const nti=$('noticeTitleInp');if(nti)nti.addEventListener('input',e=>{ST.noticeTitle=e.target.value});
   const nbi=$('noticeBodyInp');if(nbi)nbi.addEventListener('input',e=>{ST.noticeBody=e.target.value});
+  // 닉네임 폼
+  const nki=$('nickInp');if(nki)nki.addEventListener('input',e=>{ST.nickInput=e.target.value});
+  // 이미지 URL 폼
+  const pii=$('postImageInp');if(pii)pii.addEventListener('input',e=>{ST.postFormImageUrl=e.target.value});
+  // 댓글 입력
+  document.querySelectorAll('[data-comment-inp]').forEach(el=>{
+    el.addEventListener('input',e=>{ST.commentInputs[el.dataset.commentInp]=e.target.value});
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -865,6 +881,9 @@ function renderCommunity(){
         <h2 style="font-size:22px;font-weight:800;margin-bottom:2px">💬 커뮤니티</h2>
         <p style="font-size:13px;color:${C.muted}">추가했으면 하는 곡 추천, 등록 요청, 자유 대화</p>
       </div>
+      <button onclick="openNickModal()" style="background:${C.s2};border:1px solid ${C.b};border-radius:11px;padding:9px 12px;color:${C.muted};font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px">
+        👤 ${ST.myNick||'닉네임 설정'}
+      </button>
       <button onclick="openPostForm()" style="background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:11px;padding:9px 16px;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;gap:5px">
         ＋ 글쓰기
       </button>
@@ -913,7 +932,8 @@ function renderCommunity(){
                 <div style="flex:1;min-width:0">
                   <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;flex-wrap:wrap">
                     <span style="font-size:11px;color:${pt.color};background:${pt.color}22;border:1px solid ${pt.color}44;border-radius:20px;padding:2px 9px;font-weight:700">${pt.icon} ${pt.label}</span>
-                    <span style="font-size:11px;color:${C.dim}">${timeAgo(p.createdAt)}</span>
+                    <span style="font-size:11px;color:${C.dim}">${esc(p.author||'익명')} · ${timeAgo(p.createdAt)}</span>
+                    <span style="font-size:11px;color:${C.dim}">💬 ${(ST.comments[p.id]||[]).length}</span>
                   </div>
                   <div style="font-size:15px;font-weight:700;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.title)}</div>
                   <div style="font-size:13px;color:${C.muted};overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.6">${esc(p.body)}</div>
@@ -939,29 +959,75 @@ function renderPostModal(){
   if(!p)return'';
   const pt=POST_TYPES[p.type]||POST_TYPES.free;
   const liked=ST.postLikes.has(p.id);
-  return`<div onclick="closePost()" style="position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:500;padding:20px">
-    <div onclick="event.stopPropagation()" style="background:${C.card};border:1px solid ${pt.color}44;border-radius:22px;max-width:580px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 0 50px ${pt.color}18">
-      <div style="padding:24px">
+  const isOwner=ST.myId&&p.authorId===ST.myId;
+  const canEdit=isOwner||ST.isAdmin;
+  const canDelete=isOwner||ST.isAdmin;
+  const comments=ST.comments[p.id]||[];
+  const commentInput=ST.commentInputs[p.id]||'';
+
+  return`<div onclick="closePost()" style="position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:500;padding:16px">
+    <div onclick="event.stopPropagation()" style="background:${C.card};border:1px solid ${pt.color}44;border-radius:22px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 0 50px ${pt.color}18">
+      <div style="padding:22px">
+        <!-- 헤더 -->
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
           <span style="font-size:11px;color:${pt.color};background:${pt.color}22;border:1px solid ${pt.color}44;border-radius:20px;padding:3px 10px;font-weight:700">${pt.icon} ${pt.label}</span>
-          <span style="font-size:11px;color:${C.dim}">${timeAgo(p.createdAt)}</span>
+          <span style="font-size:11px;color:${C.dim}">${esc(p.author||'익명')} · ${timeAgo(p.createdAt)}</span>
           <div style="flex:1"></div>
-          ${ST.isAdmin?`<button onclick="deletePost('${esc(p.id)}')" style="background:${C.pink}22;border:1px solid ${C.pink}44;border-radius:8px;padding:4px 10px;color:${C.pink};font-size:11px">삭제</button>`:''}
+          ${canEdit?`<button onclick="editPost('${esc(p.id)}')" style="background:${C.pur}22;border:1px solid ${C.pur}44;border-radius:8px;padding:4px 10px;color:${C.purL};font-size:11px;font-weight:600">수정</button>`:''}
+          ${canDelete?`<button onclick="deletePost('${esc(p.id)}')" style="background:${C.pink}22;border:1px solid ${C.pink}44;border-radius:8px;padding:4px 10px;color:${C.pink};font-size:11px">삭제</button>`:''}
           <button onclick="closePost()" style="background:${C.s1};border:1px solid ${C.b};border-radius:8px;padding:4px 10px;color:${C.muted};font-size:11px">✕</button>
         </div>
-        <div style="font-size:20px;font-weight:800;margin-bottom:14px">${esc(p.title)}</div>
-        <div style="font-size:14px;color:${C.muted};line-height:2;white-space:pre-wrap;margin-bottom:18px">${esc(p.body)}</div>
-        ${p.videoUrl?`<a href="${esc(p.videoUrl)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:${C.pur}22;border:1px solid ${C.pur}44;border-radius:10px;padding:8px 14px;color:${C.purL};font-size:13px;font-weight:600;margin-bottom:16px">
-          ▶ YouTube에서 보기
-        </a>`:''}
-        <div style="display:flex;align-items:center;gap:10px;padding-top:14px;border-top:1px solid ${C.b}">
+
+        <!-- 제목/본문 -->
+        <div style="font-size:20px;font-weight:800;margin-bottom:10px">${esc(p.title)}</div>
+        <div style="font-size:14px;color:${C.muted};line-height:2;white-space:pre-wrap;margin-bottom:14px">${esc(p.body)}</div>
+
+        <!-- 이미지 -->
+        ${p.imageUrl?`<img src="${esc(p.imageUrl)}" style="width:100%;border-radius:12px;margin-bottom:14px;object-fit:cover;max-height:320px" onerror="this.style.display='none'">`:''}
+
+        <!-- YouTube -->
+        ${p.videoUrl?`<a href="${esc(p.videoUrl)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:${C.pur}22;border:1px solid ${C.pur}44;border-radius:10px;padding:8px 14px;color:${C.purL};font-size:13px;font-weight:600;margin-bottom:14px">▶ YouTube에서 보기</a>`:''}
+
+        <!-- 좋아요 -->
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid ${C.b};border-bottom:1px solid ${C.b};margin-bottom:18px">
           <button onclick="togglePostLike('${esc(p.id)}')"
             style="background:${liked?C.pink+'22':'none'};border:1px solid ${liked?C.pink+'66':C.b};border-radius:10px;padding:7px 14px;color:${liked?C.pink:C.muted};font-size:13px;display:flex;align-items:center;gap:5px">
             ${liked?'❤️':'🤍'} ${p.likes||0} 좋아요
           </button>
-          <div style="flex:1"></div>
-          <button onclick="closePost()" style="background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:7px 14px;color:${C.muted};font-size:13px">닫기</button>
         </div>
+
+        <!-- 댓글 -->
+        <div style="margin-bottom:10px;font-size:13px;font-weight:700">💬 댓글 <span style="color:${C.purL}">${comments.length}</span></div>
+
+        <!-- 댓글 목록 -->
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+          ${comments.length===0?`<div style="text-align:center;padding:20px;color:${C.dim};font-size:13px">첫 댓글을 남겨보세요!</div>`:
+            comments.map(cm=>{
+              const cmOwner=ST.myId&&cm.authorId===ST.myId;
+              const cmCanDel=cmOwner||ST.isAdmin;
+              return`<div style="background:${C.s1};border-radius:12px;padding:12px 14px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                  <span style="font-size:12px;font-weight:700;color:${cm.authorId===p.authorId?pt.color:C.purL}">${esc(cm.author||'익명')}${cm.authorId===p.authorId?' (작성자)':''}</span>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-size:11px;color:${C.dim}">${timeAgo(cm.createdAt)}</span>
+                    ${cmCanDel?`<button onclick="deleteComment('${esc(p.id)}','${esc(cm.id)}')" style="background:none;border:none;color:${C.dim};font-size:11px;padding:0">✕</button>`:''}
+                  </div>
+                </div>
+                <div style="font-size:13px;color:${C.muted};line-height:1.7;white-space:pre-wrap">${esc(cm.body)}</div>
+              </div>`;
+            }).join('')
+          }
+        </div>
+
+        <!-- 댓글 입력 -->
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <textarea data-comment-inp="${esc(p.id)}" placeholder="${ST.myNick?ST.myNick+'으로 댓글 작성...':'닉네임 설정 후 댓글 작성...'}"
+            style="flex:1;background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:9px 12px;color:${C.txt};font-size:13px;outline:none;resize:none;min-height:42px;line-height:1.5;font-family:inherit"
+            rows="2">${esc(commentInput)}</textarea>
+          <button onclick="submitComment('${esc(p.id)}')" style="background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:10px;padding:9px 14px;color:#fff;font-size:13px;font-weight:700;flex-shrink:0">등록</button>
+        </div>
+        ${!ST.myNick?`<div style="margin-top:6px;font-size:11px;color:${C.dim}">댓글 작성 전 <button onclick="openNickModal()" style="background:none;border:none;color:${C.purL};font-size:11px;font-weight:700;cursor:pointer;text-decoration:underline">닉네임을 설정</button>해주세요</div>`:''}
+
       </div>
     </div>
   </div>`;
@@ -971,13 +1037,18 @@ function renderPostModal(){
 function renderPostForm(){
   if(!ST.postForm)return'';
   const inp=`background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:9px 12px;color:${C.txt};font-size:13px;outline:none;width:100%`;
+  const isEdit=!!ST.postEditId;
   return`<div onclick="closePostForm()" style="position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:550;padding:20px">
     <div onclick="event.stopPropagation()" style="background:${C.card};border:1px solid ${C.pur}44;border-radius:22px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;padding:26px;box-shadow:0 0 50px ${C.pur}18">
-      <div style="font-size:18px;font-weight:800;margin-bottom:4px">✍️ 글쓰기</div>
-      <div style="font-size:12px;color:${C.muted};margin-bottom:20px">추천, 요청, 자유롭게 이야기해보세요</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:4px">${isEdit?'✏️ 글 수정':'✍️ 글쓰기'}</div>
+      <div style="font-size:12px;color:${C.muted};margin-bottom:${ST.myNick?'6':'16'}px">${isEdit?'내용을 수정해주세요':'추천, 요청, 자유롭게 이야기해보세요'}</div>
+      ${ST.myNick
+        ?`<div style="margin-bottom:14px;display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:${C.dim}">작성자:</span><span style="font-size:13px;font-weight:700;color:${C.purL}">${esc(ST.myNick)}</span><button onclick="openNickModal()" style="background:none;border:none;color:${C.dim};font-size:11px;cursor:pointer;text-decoration:underline">변경</button></div>`
+        :`<div style="background:${C.amb}18;border:1px solid ${C.amb}44;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:${C.amb}">⚠ 닉네임을 먼저 설정해주세요 <button onclick="openNickModal()" style="background:none;border:none;color:${C.amb};font-size:12px;font-weight:700;cursor:pointer;text-decoration:underline">설정하기 →</button></div>`
+      }
 
       <!-- 유형 선택 -->
-      <div style="margin-bottom:14px">
+      ${!isEdit?`<div style="margin-bottom:14px">
         <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:8px">글 유형</label>
         <div style="display:flex;gap:6px">
           ${Object.entries(POST_TYPES).map(([k,v])=>`
@@ -985,7 +1056,7 @@ function renderPostForm(){
               ${v.icon}<br><span style="font-size:10px">${v.label}</span>
             </button>`).join('')}
         </div>
-      </div>
+      </div>`:''}
 
       <!-- 제목 -->
       <div style="margin-bottom:12px">
@@ -999,6 +1070,13 @@ function renderPostForm(){
         <textarea id="postBodyInp" placeholder="자세한 내용을 적어주세요..." style="${inp};resize:vertical;min-height:100px;line-height:1.6">${esc(ST.postFormBody)}</textarea>
       </div>
 
+      <!-- 이미지 URL -->
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:6px">🖼 이미지 URL <span style="font-weight:400;color:${C.dim}">(선택)</span></label>
+        <input id="postImageInp" type="text" placeholder="https://..." value="${esc(ST.postFormImageUrl)}" style="${inp}">
+        ${ST.postFormImageUrl?`<img src="${esc(ST.postFormImageUrl)}" style="margin-top:8px;width:100%;max-height:160px;object-fit:cover;border-radius:10px;border:1px solid ${C.b}" onerror="this.style.display='none'">`:''}
+      </div>
+
       <!-- YouTube URL (선택) -->
       <div style="margin-bottom:20px">
         <label style="font-size:12px;color:${C.muted};font-weight:600;display:block;margin-bottom:6px">YouTube URL <span style="font-weight:400;color:${C.dim}">(선택 · 원곡/참고 영상)</span></label>
@@ -1007,8 +1085,8 @@ function renderPostForm(){
 
       <div style="display:flex;gap:8px">
         <button onclick="closePostForm()" style="flex:1;background:${C.s1};border:1px solid ${C.b};border-radius:11px;padding:11px;color:${C.muted};font-size:13px">취소</button>
-        <button onclick="submitPost()" style="flex:2;background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:11px;padding:11px;color:#fff;font-size:13px;font-weight:700">
-          ${ST.postFormLoading?'<span class="spin">⏳</span>':'게시하기'}
+        <button onclick="${isEdit?'updatePost()':'submitPost()'}" style="flex:2;background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:11px;padding:11px;color:#fff;font-size:13px;font-weight:700">
+          ${ST.postFormLoading?'<span class="spin">⏳</span>':isEdit?'💾 수정 완료':'게시하기'}
         </button>
       </div>
     </div>
@@ -1201,15 +1279,45 @@ window.saveLyricsManual=async function(id){
 // 커뮤니티 액션
 // ═══════════════════════════════════════════════════════════════
 window.openPostForm=function(){
-  ST.postForm=true;ST.postFormTitle='';ST.postFormBody='';ST.postFormUrl='';ST.postFormType='suggest';
-  render();setTimeout(()=>{const i=$('postTitleInp');if(i)i.focus();},50);
+  if(!ST.myNick){openNickModal();return;}
+  ST.postForm=true;ST.postEditId=null;ST.postFormTitle='';ST.postFormBody='';ST.postFormUrl='';ST.postFormImageUrl='';ST.postFormType='suggest';
+  _renderWithModal();setTimeout(()=>{const i=$('postTitleInp');if(i)i.focus();},50);
 }
-window.closePostForm=function(){ST.postForm=false;render();}
+window.closePostForm=function(){ST.postForm=false;ST.postEditId=null;_renderWithModal();}
+
+window.editPost=function(id){
+  const p=ST.posts.find(x=>x.id===id);if(!p)return;
+  const isOwner=ST.myId&&p.authorId===ST.myId;
+  if(!isOwner&&!ST.isAdmin){showToast('수정 권한이 없습니다','err');return;}
+  ST.postEditId=id;ST.postFormType=p.type||'free';
+  ST.postFormTitle=p.title||'';ST.postFormBody=p.body||'';
+  ST.postFormUrl=p.videoUrl||'';ST.postFormImageUrl=p.imageUrl||'';
+  ST.postForm=true;ST.postView=null;
+  _renderWithModal();
+}
+
+window.updatePost=async function(){
+  if(!ST.postEditId)return;
+  const title=($('postTitleInp')||{}).value||ST.postFormTitle;
+  const body=($('postBodyInp')||{}).value||ST.postFormBody;
+  if(!title.trim()||!body.trim()){showToast('제목과 내용을 입력해 주세요','err');return;}
+  const p=ST.posts.find(x=>x.id===ST.postEditId);if(!p)return;
+  const isOwner=ST.myId&&p.authorId===ST.myId;
+  if(!isOwner&&!ST.isAdmin){showToast('수정 권한이 없습니다','err');return;}
+  p.title=title.trim();p.body=body.trim();
+  p.videoUrl=($('postUrlInp')||{}).value||ST.postFormUrl||'';
+  p.imageUrl=($('postImageInp')||{}).value||ST.postFormImageUrl||'';
+  p.editedAt=new Date().toISOString();
+  await sSet(POSTKEY,ST.posts);
+  ST.postForm=false;ST.postEditId=null;showToast('✓ 수정되었습니다');
+}
 
 window.submitPost=async function(){
+  if(!ST.myNick){showToast('닉네임을 먼저 설정해 주세요','err');openNickModal();return;}
   const title=($('postTitleInp')||{}).value||ST.postFormTitle;
   const body=($('postBodyInp')||{}).value||ST.postFormBody;
   const videoUrl=($('postUrlInp')||{}).value||ST.postFormUrl;
+  const imageUrl=($('postImageInp')||{}).value||ST.postFormImageUrl;
   if(!title.trim()){showToast('제목을 입력해 주세요','err');return}
   if(!body.trim()){showToast('내용을 입력해 주세요','err');return}
   ST.postFormLoading=true;render();
@@ -1219,6 +1327,9 @@ window.submitPost=async function(){
     title:title.trim(),
     body:body.trim(),
     videoUrl:videoUrl.trim(),
+    imageUrl:imageUrl.trim(),
+    author:ST.myNick,
+    authorId:ST.myId,
     createdAt:new Date().toISOString(),
     likes:0,
   };
@@ -1228,8 +1339,46 @@ window.submitPost=async function(){
   showToast('✓ 게시글이 등록되었습니다!');
 }
 
-window.openPost=function(id){ST.postView=id;render();}
-window.closePost=function(){ST.postView=null;render();}
+// 닉네임 모달
+window.openNickModal=function(){ST.nickModalOpen=true;ST.nickInput=ST.myNick||'';_renderWithModal();}
+window.closeNickModal=function(){ST.nickModalOpen=false;_renderWithModal();}
+window.saveNick=function(){
+  const v=(($('nickInp')||{}).value||ST.nickInput).trim();
+  if(!v){showToast('닉네임을 입력해 주세요','err');return;}
+  if(v.length>12){showToast('닉네임은 12자 이내로 입력해 주세요','err');return;}
+  ST.myNick=v;try{localStorage.setItem('vsf_mynick',v)}catch{}
+  ST.nickModalOpen=false;showToast('✓ 닉네임이 설정되었습니다');
+}
+
+// 댓글
+window.submitComment=async function(postId){
+  if(!ST.myNick){showToast('닉네임을 먼저 설정해 주세요','err');return;}
+  const body=(ST.commentInputs[postId]||'').trim();
+  if(!body){showToast('댓글 내용을 입력해 주세요','err');return;}
+  if(!ST.comments[postId])ST.comments[postId]=[];
+  ST.comments[postId].push({
+    id:Date.now().toString(),
+    body,author:ST.myNick,authorId:ST.myId,
+    createdAt:new Date().toISOString(),
+  });
+  ST.commentInputs[postId]='';
+  await sSet(COMMENTKEY,ST.comments);
+  _renderWithModal();showToast('✓ 댓글이 등록되었습니다');
+}
+window.deleteComment=async function(postId,commentId){
+  if(!confirm('댓글을 삭제할까요?'))return;
+  if(!ST.comments[postId])return;
+  const cm=ST.comments[postId].find(x=>x.id===commentId);
+  if(!cm)return;
+  const isOwner=ST.myId&&cm.authorId===ST.myId;
+  if(!isOwner&&!ST.isAdmin){showToast('삭제 권한이 없습니다','err');return;}
+  ST.comments[postId]=ST.comments[postId].filter(x=>x.id!==commentId);
+  await sSet(COMMENTKEY,ST.comments);
+  _renderWithModal();showToast('댓글이 삭제되었습니다');
+}
+
+window.openPost=function(id){ST.postView=id;_renderWithModal();}
+window.closePost=function(){ST.postView=null;_renderWithModal();}
 
 window.togglePostLike=function(id){
   const p=ST.posts.find(x=>x.id===id);if(!p)return;
@@ -1239,10 +1388,14 @@ window.togglePostLike=function(id){
 }
 
 window.deletePost=async function(id){
+  const p=ST.posts.find(x=>x.id===id);if(!p)return;
+  const isOwner=ST.myId&&p.authorId===ST.myId;
+  if(!isOwner&&!ST.isAdmin){showToast('삭제 권한이 없습니다','err');return;}
   if(!confirm('게시글을 삭제할까요?'))return;
   ST.posts=ST.posts.filter(x=>x.id!==id);
-  await sSet(POSTKEY,ST.posts);
-  ST.postView=null;showToast('게시글이 삭제되었습니다');
+  delete ST.comments[id];
+  await Promise.all([sSet(POSTKEY,ST.posts),sSet(COMMENTKEY,ST.comments)]);
+  ST.postView=null;showToast('게시글이 삭제되었습니다');_renderWithModal();
 }
 
 // 공지 액션
@@ -1364,6 +1517,23 @@ function showToast(msg,type='ok'){
   _toastTimer=setTimeout(()=>{ST.toast=null;render()},2500);
 }
 
+// 닉네임 설정 모달
+function renderNickModal(){
+  return`<div onclick="closeNickModal()" style="position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:650;padding:20px">
+    <div onclick="event.stopPropagation()" style="background:${C.card};border:1px solid ${C.pur}44;border-radius:20px;padding:28px;width:100%;max-width:320px;box-shadow:0 0 40px ${C.pur}22">
+      <div style="font-size:18px;font-weight:800;margin-bottom:6px">👤 닉네임 설정</div>
+      <div style="font-size:13px;color:${C.muted};margin-bottom:20px">커뮤니티에서 사용할 닉네임을 입력해 주세요 (최대 12자)</div>
+      <input id="nickInp" type="text" placeholder="닉네임 입력" value="${esc(ST.nickInput)}" maxlength="12"
+        style="width:100%;background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:10px 14px;color:${C.txt};font-size:14px;outline:none;margin-bottom:16px"
+        onkeydown="if(event.key==='Enter')saveNick()">
+      <div style="display:flex;gap:8px">
+        <button onclick="closeNickModal()" style="flex:1;background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:10px;color:${C.muted};font-size:13px">취소</button>
+        <button onclick="saveNick()" style="flex:1;background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:10px;padding:10px;color:#fff;font-size:13px;font-weight:700">저장</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 // 관리자 로그인 모달
 function renderAdminModal(){
   return`<div onclick="closeAdminLogin()" style="position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:600;padding:20px">
@@ -1410,6 +1580,7 @@ function _renderWithModal(){
   if(ST.postView)html+=renderPostModal();
   if(ST.postForm)html+=renderPostForm();
   if(ST.noticeEditMode)html+=renderNoticeEditModal();
+  if(ST.nickModalOpen)html+=renderNickModal();
   if(ST.toast)html+=renderToast();
   root.innerHTML=html;
   bindEvents();
@@ -1418,7 +1589,8 @@ function _renderWithModal(){
 
 // ESC 키
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'&&ST.noticeEditMode)closeNoticeEdit();
+  if(e.key==='Escape'&&ST.nickModalOpen)closeNickModal();
+  else if(e.key==='Escape'&&ST.noticeEditMode)closeNoticeEdit();
   else if(e.key==='Escape'&&ST.postForm)closePostForm();
   else if(e.key==='Escape'&&ST.postView)closePost();
   else if(e.key==='Escape'&&ST.editChannelFor)closeEditChannel();
@@ -1433,7 +1605,7 @@ document.addEventListener('keydown',e=>{
   ST.loading=true;render();
   // 그리드 크기 복원
   try{const g=localStorage.getItem(GRID_KEY);if(g)ST.gridSize=Number(g)||3;}catch{}
-  const [c,l,v,ch,lyr,posts,notice]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY),sGet(CHKEY),sGet(LYRKEY),sGet(POSTKEY),sGet(NOTICEKEY)]);
+  const [c,l,v,ch,lyr,posts,notice,comments]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY),sGet(CHKEY),sGet(LYRKEY),sGet(POSTKEY),sGet(NOTICEKEY),sGet(COMMENTKEY)]);
   ST.covers=c||[];
   ST.likes=l||{};
   ST.views=v||{};
@@ -1441,6 +1613,10 @@ document.addEventListener('keydown',e=>{
   ST.manualLyrics=lyr||{};
   ST.posts=posts||[];
   ST.notice=notice||null;
+  ST.comments=comments||{};
+  // 내 ID/닉네임 복원
+  try{ST.myId=localStorage.getItem('vsf_myid')||'';ST.myNick=localStorage.getItem('vsf_mynick')||'';}catch{}
+  if(!ST.myId){ST.myId='u'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);try{localStorage.setItem('vsf_myid',ST.myId)}catch{}}
   try{
     const ml=JSON.parse(localStorage.getItem(MY_LIKES_KEY)||'[]');
     ST.myLikes=new Set(ml);
@@ -1450,7 +1626,7 @@ document.addEventListener('keydown',e=>{
 
   // 5초마다 공유 데이터 동기화
   _pollTimer=setInterval(async()=>{
-    const[c,l,v,ch,lyr,posts,notice]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY),sGet(CHKEY),sGet(LYRKEY),sGet(POSTKEY),sGet(NOTICEKEY)]);
+    const[c,l,v,ch,lyr,posts,notice,comments]=await Promise.all([sGet(SKEY),sGet(LKEY),sGet(VKEY),sGet(CHKEY),sGet(LYRKEY),sGet(POSTKEY),sGet(NOTICEKEY),sGet(COMMENTKEY)]);
     let changed=false;
     if(c&&JSON.stringify(c)!==JSON.stringify(ST.covers)){ST.covers=c;changed=true}
     if(l&&JSON.stringify(l)!==JSON.stringify(ST.likes)){ST.likes=l;changed=true}
@@ -1459,6 +1635,7 @@ document.addEventListener('keydown',e=>{
     if(lyr&&JSON.stringify(lyr)!==JSON.stringify(ST.manualLyrics)){ST.manualLyrics=lyr;changed=true}
     if(posts&&JSON.stringify(posts)!==JSON.stringify(ST.posts)){ST.posts=posts;changed=true}
     if(JSON.stringify(notice)!==JSON.stringify(ST.notice)){ST.notice=notice||null;changed=true}
+    if(comments&&JSON.stringify(comments)!==JSON.stringify(ST.comments)){ST.comments=comments;changed=true}
     if(changed)render();
   },5000);
 })();
