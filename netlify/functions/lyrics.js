@@ -5,7 +5,16 @@ export default async (req) => {
 
   try {
     const body = await req.json();
-    const { title, original, streamer } = body;
+    let { title, original, streamer } = body;
+
+    // 입력 길이 제한 (토큰 사용량 제어)
+    title = String(title || '').trim().slice(0, 256);
+    original = String(original || '').trim().slice(0, 256);
+    streamer = String(streamer || '').trim().slice(0, 64);
+
+    if (!title) {
+      return new Response(JSON.stringify({ error: '곡명 필수' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

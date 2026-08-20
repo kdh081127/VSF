@@ -24,6 +24,50 @@ button{cursor:pointer}
 .card{transition:border-color .15s,box-shadow .15s,transform .15s}
 .card:hover{transform:translateY(-2px)}
 button:active{opacity:.85}
+.vsf-shell{min-height:100vh}
+.vsf-sidebar{
+  position:fixed;
+  inset:0 auto 0 0;
+  width:220px;
+  background:#0D0D18;
+  border-right:1px solid #242438;
+  padding:16px 12px;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  z-index:200;
+}
+.vsf-main{min-height:100vh;margin-left:220px}
+.vsf-brand{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background:none;
+  border:none;
+  padding:0 4px 14px;
+  width:100%;
+  border-bottom:1px solid #242438;
+}
+.vsf-nav{display:flex;flex-direction:column;gap:6px}
+.vsf-sidebar-action{width:100%;justify-content:flex-start}
+.vsf-sidebar>button:not(.vsf-brand){
+  width:100%;
+  display:flex!important;
+  align-items:center;
+  justify-content:flex-start;
+}
+.vsf-search{position:relative;width:100%;margin-top:2px}
+.vsf-sidebar-spacer{flex:1}
+
+@media(max-width:720px){
+  .vsf-sidebar{width:72px;padding:14px 10px;align-items:center}
+  .vsf-main{margin-left:72px}
+  .vsf-brand{justify-content:center;padding:0 0 12px}
+  .vsf-brand-text,.vsf-brand-sub,.vsf-side-label,.vsf-search{display:none!important}
+  .vsf-nav{width:100%}
+  .vsf-sidebar-action{justify-content:center;padding-left:0!important;padding-right:0!important}
+  .vsf-sidebar>button:not(.vsf-brand){justify-content:center}
+}
 
 /* ── 반응형 ── */
 @media(max-width:600px){
@@ -224,8 +268,9 @@ function $(id){return document.getElementById(id)}
 function render(){
   const root=$('root');if(!root)return;
   let html='';
+  html+=`<div class="vsf-shell">`;
   html+=renderHeader();
-  html+=`<div style="min-height:calc(100vh - 56px)">`;
+  html+=`<main class="vsf-main">`;
   if(ST.loading){html+=renderLoading();}
   else if(ST.page==='home'){html+=renderHome();}
   else if(ST.page==='add'){html+=renderAdd();}
@@ -233,7 +278,7 @@ function render(){
   else if(ST.page==='ranking'){html+=renderRanking();}
   else if(ST.page==='lyrics'){html+=renderLyrics();}
   else if(ST.page==='community'){html+=renderCommunity();}
-  html+=`</div>`;
+  html+=`</main></div>`;
   if(ST.detailId)html+=renderDetail();
   if(ST.editChannelFor)html+=renderChannelEditModal();
   if(ST.postView)html+=renderPostModal();
@@ -286,27 +331,29 @@ function renderToast(){
 
 function renderHeader(){
   const navs=[{k:'home',i:'🏠',l:'홈'},{k:'channel',i:'📺',l:'채널'},{k:'ranking',i:'🏆',l:'랭킹'},{k:'community',i:'💬',l:'커뮤니티'}];
-  return`<div style="background:${C.s1};border-bottom:1px solid ${C.b};padding:0 12px;height:56px;display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:200">
-    <button onclick="nav('home')" style="display:flex;align-items:center;gap:6px;background:none;border:none;padding:0;flex-shrink:0">
+  return`<aside class="vsf-sidebar">
+    <button onclick="nav('home')" class="vsf-brand">
       <div style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,${C.pur},${C.pink});display:flex;align-items:center;justify-content:center;font-size:17px">🎙</div>
-      <span style="font-size:19px;font-weight:800;color:${C.txt};letter-spacing:-1px">VSF</span>
-      <span class="hide-mobile" style="font-size:9px;color:${C.dim};font-weight:600;letter-spacing:1.5px">COVER ARCHIVE</span>
+      <div class="vsf-brand-text" style="display:flex;flex-direction:column;align-items:flex-start;line-height:1.05">
+        <span style="font-size:19px;font-weight:800;color:${C.txt};letter-spacing:-1px">VSF</span>
+        <span class="vsf-brand-sub" style="font-size:9px;color:${C.dim};font-weight:600;letter-spacing:1.5px;margin-top:4px">COVER ARCHIVE</span>
+      </div>
     </button>
-    <div style="display:flex;gap:2px;margin-left:2px">
-      ${navs.map(n=>`<button onclick="nav('${n.k}')" style="background:${ST.page===n.k?C.pur+'22':'none'};border:1px solid ${ST.page===n.k?C.pur+'66':'transparent'};border-radius:8px;padding:4px 8px;color:${ST.page===n.k?C.purL:C.muted};font-size:12px;font-weight:600;display:flex;align-items:center;gap:3px">${n.i}<span class="hide-mobile"> ${n.l}</span></button>`).join('')}
+    <div class="vsf-nav">
+      ${navs.map(n=>`<button onclick="nav('${n.k}')" class="vsf-sidebar-action" style="background:${ST.page===n.k?C.pur+'22':'none'};border:1px solid ${ST.page===n.k?C.pur+'66':'transparent'};border-radius:10px;padding:10px 12px;color:${ST.page===n.k?C.purL:C.muted};font-size:13px;font-weight:700;display:flex;align-items:center;gap:10px">${n.i}<span class="vsf-side-label">${n.l}</span></button>`).join('')}
     </div>
-    <div style="flex:1"></div>
-    ${ST.page==='home'?`<div style="position:relative;width:clamp(100px,180px,220px)">
+    ${ST.page==='home'?`<div class="vsf-search">
       <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:${C.dim};font-size:13px">🔍</span>
       <input id="searchInp" type="text" placeholder="검색..." value="${esc(ST.search)}"
         style="width:100%;background:${C.card};border:1px solid ${C.b};border-radius:10px;padding:7px 10px 7px 28px;color:${C.txt};font-size:13px;outline:none">
     </div>`:''}
+    <div class="vsf-sidebar-spacer"></div>
     ${ST.isAdmin
-      ? `<button onclick="nav('add')" style="background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:10px;padding:7px 12px;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0">＋<span class="hide-mobile"> 추가</span></button>
-         <button onclick="adminLogout()" style="background:${C.pink}22;border:1px solid ${C.pink}44;border-radius:10px;padding:7px 9px;color:${C.pink};font-size:12px;font-weight:600;flex-shrink:0">🔓</button>`
-      : `<button onclick="openAdminLogin()" style="background:${C.s2};border:1px solid ${C.b};border-radius:10px;padding:7px 11px;color:${C.muted};font-size:12px;font-weight:600;flex-shrink:0">🔒</button>`
+      ? `<button onclick="nav('add')" class="vsf-sidebar-action" style="background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:10px;padding:10px 12px;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;gap:10px;white-space:nowrap">＋<span class="vsf-side-label">추가</span></button>
+         <button onclick="adminLogout()" class="vsf-sidebar-action" style="background:${C.pink}22;border:1px solid ${C.pink}44;border-radius:10px;padding:10px 12px;color:${C.pink};font-size:13px;font-weight:700;display:flex;align-items:center;gap:10px">🔓<span class="vsf-side-label">로그아웃</span></button>`
+      : `<button onclick="openAdminLogin()" class="vsf-sidebar-action" style="background:${C.s2};border:1px solid ${C.b};border-radius:10px;padding:10px 12px;color:${C.muted};font-size:13px;font-weight:700;display:flex;align-items:center;gap:10px">🔒<span class="vsf-side-label">관리자</span></button>`
     }
-  </div>`;
+  </aside>`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1400,6 +1447,7 @@ function renderAdminModal(){
         style="width:100%;background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:10px 14px;color:${C.txt};font-size:14px;outline:none;margin-bottom:10px"
         onkeydown="if(event.key==='Enter')submitAdminLogin()">
       ${ST.adminPwInput==='__err__'?`<div style="color:${C.pink};font-size:12px;margin-bottom:10px">비밀번호가 틀렸습니다</div>`:''}
+      ${ST.adminPwInput==='__api__'?`<div style="color:${C.amb};font-size:12px;margin-bottom:10px">관리자 인증 API에 연결할 수 없습니다. Netlify Dev 또는 배포 환경에서 실행해 주세요.</div>`:''}
       <div style="display:flex;gap:8px;margin-top:4px">
         <button onclick="closeAdminLogin()" style="flex:1;background:${C.s1};border:1px solid ${C.b};border-radius:10px;padding:10px;color:${C.muted};font-size:13px">취소</button>
         <button onclick="submitAdminLogin()" style="flex:1;background:linear-gradient(135deg,${C.pur},${C.purD});border:none;border-radius:10px;padding:10px;color:#fff;font-size:13px;font-weight:700">로그인</button>
@@ -1412,22 +1460,33 @@ let _showAdminModal=false;
 window.openAdminLogin=function(){_showAdminModal=true;ST.adminPwInput='';_renderWithModal();}
 window.closeAdminLogin=function(){_showAdminModal=false;ST.adminPwInput='';_renderWithModal();}
 window.adminLogout=function(){ST.isAdmin=false;showToast('로그아웃 되었습니다');render();}
-window.submitAdminLogin=function(){
+window.submitAdminLogin=async function(){
   const pw=($('adminPwInp')||{}).value||'';
   if(!pw){ST.adminPwInput='__err__';_renderWithModal();return;}
-  if(pw==='digogang25'){
-    ST.isAdmin=true;_showAdminModal=false;ST.adminPwInput='';
-    showToast('✓ 관리자로 로그인되었습니다');
-  }else{
-    ST.adminPwInput='__err__';_renderWithModal();
+  // 비밀번호를 클라이언트에 노출하지 않고 서버에서 검증
+  try{
+    const res=await fetch('/api/admin-auth',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pw})
+    });
+    if(res.ok){
+      const d=await res.json();
+      if(d.ok){ST.isAdmin=true;_showAdminModal=false;ST.adminPwInput='';showToast('✓ 관리자로 로그인되었습니다');}
+      else{ST.adminPwInput='__err__';_renderWithModal();setTimeout(()=>{const i=$('adminPwInp');if(i)i.focus();},50);}
+    }else{ST.adminPwInput='__api__';_renderWithModal();}
+  }catch{
+    // Netlify Function 미배포 환경(로컬 등) fallback — 배포 시 삭제
+    ST.adminPwInput='__api__';_renderWithModal();
     setTimeout(()=>{const i=$('adminPwInp');if(i)i.focus();},50);
   }
 }
 function _renderWithModal(){
   const root=$('root');if(!root)return;
   let html='';
+  html+=`<div class="vsf-shell">`;
   html+=renderHeader();
-  html+=`<div style="min-height:calc(100vh - 56px)">`;
+  html+=`<main class="vsf-main">`;
   if(ST.loading){html+=renderLoading();}
   else if(ST.page==='home'){html+=renderHome();}
   else if(ST.page==='add'){html+=renderAdd();}
@@ -1435,7 +1494,7 @@ function _renderWithModal(){
   else if(ST.page==='ranking'){html+=renderRanking();}
   else if(ST.page==='lyrics'){html+=renderLyrics();}
   else if(ST.page==='community'){html+=renderCommunity();}
-  html+=`</div>`;
+  html+=`</main></div>`;
   if(ST.detailId)html+=renderDetail();
   if(_showAdminModal)html+=renderAdminModal();
   if(ST.editChannelFor)html+=renderChannelEditModal();
