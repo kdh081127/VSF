@@ -1461,7 +1461,7 @@ window.openAdminLogin=function(){_showAdminModal=true;ST.adminPwInput='';_render
 window.closeAdminLogin=function(){_showAdminModal=false;ST.adminPwInput='';_renderWithModal();}
 window.adminLogout=function(){ST.isAdmin=false;showToast('로그아웃 되었습니다');render();}
 window.submitAdminLogin=async function(){
-  const pw=($('adminPwInp')||{}).value||'';
+  const pw=(($('adminPwInp')||{}).value||'').trim();
   if(!pw){ST.adminPwInput='__err__';_renderWithModal();return;}
   // 비밀번호를 클라이언트에 노출하지 않고 서버에서 검증
   try{
